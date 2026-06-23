@@ -1,9 +1,10 @@
 // --- WebGIS Portal Main JavaScript - AMBIUM Digital ---
-// Shared by every client portal under clientes/<id>/. Each client supplies a
-// window.CLIENT_CONFIG (see clientes/_template/config.js) describing its map
-// view, default layers and the layer panel structure; this file contains no
-// client-specific data so a bug fix or UI improvement here benefits every
-// client portal at once.
+// One fixed codebase for every client. Client identity comes from the URL
+// (/cliente/<slug>/), and all client-specific data (map view, layer list,
+// styles, and the GeoJSON itself) is fetched at runtime from Supabase:
+// Postgres tables (clients/layer_groups/layers) for config, Storage for the
+// .geojson files. Publishing a new client or updating a layer never touches
+// this file or requires a redeploy - see scripts/upload-cliente.js.
 
 // Global variables
 let map;
@@ -16,34 +17,63 @@ let measureTooltip;
 let highlightLayer = null;
 let currentFarmFilter = '';
 
-const CONFIG = window.CLIENT_CONFIG;
-if (!CONFIG) {
-    throw new Error('window.CLIENT_CONFIG não definido. Inclua o config.js do cliente antes de shared/app.js.');
-}
-
-// Layers that come on by default and are needed immediately (study area bounds, etc.)
-const DEFAULT_ACTIVE_LAYERS = CONFIG.defaultActiveLayers || [];
-
-// Candidate properties that may hold the farm/property code, checked in order
-const FARM_CODE_FIELDS = CONFIG.farmCodeFields || ['FAZENDA', 'CHAVE_USIN', 'CHAVE_AMB', 'PROPRIEDAD', 'cod_imovel'];
-
-// Suffix appended to data file names and global variable names, e.g. data
-// exported from older preprocess.js runs is named "<id>_teste.js". New
-// clients can leave this empty if their exported files are named "<id>.js".
-const DATA_SUFFIX = CONFIG.dataSuffix !== undefined ? CONFIG.dataSuffix : '_teste';
+// Populated by loadClientConfig() before anything else runs
+let CONFIG = null;
+let DEFAULT_ACTIVE_LAYERS = [];
+let FARM_CODE_FIELDS = ['FAZENDA', 'CHAVE_USIN', 'CHAVE_AMB', 'PROPRIEDAD', 'cod_imovel'];
+let styleConfig = {};
 
 // Cache of parsed GeoJSON per layer, fetched lazily on first activation
 const loadedLayerData = {};
 const layerLoadPromises = {};
 
-// Style/legend lookup built from CONFIG.layerGroups (flattened) instead of a
-// hardcoded per-client object, so every client can have its own palette.
-const styleConfig = {};
-(CONFIG.layerGroups || []).forEach(group => {
-    (group.layers || []).forEach(layer => {
-        styleConfig[layer.id] = layer.style || { color: '#3388ff', weight: 2 };
-    });
-});
+// Client slug comes from the URL path: /cliente/<slug>/...
+function getClientSlugFromUrl() {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const idx = parts.indexOf('cliente');
+    return idx !== -1 ? parts[idx + 1] : null;
+}
+
+// Fetch this client's config + layer panel structure from Supabase Postgres
+// (via PostgREST) using the public, RLS-restricted publishable key.
+async function loadClientConfig(slug) {
+    const headers = {
+        apikey: window.SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${window.SUPABASE_PUBLISHABLE_KEY}`
+    };
+    const base = window.SUPABASE_URL;
+
+    const clientRes = await fetch(`${base}/rest/v1/clients?slug=eq.${encodeURIComponent(slug)}&select=*`, { headers });
+    if (!clientRes.ok) throw new Error(`Falha ao buscar cliente (HTTP ${clientRes.status})`);
+    const clients = await clientRes.json();
+    if (clients.length === 0) throw new Error(`Cliente "${slug}" não encontrado.`);
+    const client = clients[0];
+
+    const groupsRes = await fetch(`${base}/rest/v1/layer_groups?client_id=eq.${client.id}&select=*,layers(*)&order=sort_order.asc`, { headers });
+    if (!groupsRes.ok) throw new Error(`Falha ao buscar camadas (HTTP ${groupsRes.status})`);
+    const groups = await groupsRes.json();
+
+    groups.forEach(g => g.layers.sort((a, b) => a.sort_order - b.sort_order));
+
+    return {
+        slug,
+        clientName: client.name,
+        mapCenter: [client.map_center_lat, client.map_center_lng],
+        mapZoom: client.map_zoom,
+        zoomToLayerOnLoad: client.zoom_to_layer,
+        farmCodeFields: client.farm_code_fields,
+        layerGroups: groups.map(g => ({
+            title: g.title,
+            layers: g.layers.map(l => ({
+                id: l.layer_key,
+                label: l.label,
+                legendStyle: l.legend_style,
+                style: l.style,
+                defaultActive: l.default_active
+            }))
+        }))
+    };
+}
 
 // Build the "Camadas do Projeto" panel markup from CONFIG.layerGroups
 function renderLayerPanel() {
@@ -71,8 +101,35 @@ function renderLayerPanel() {
     `).join('');
 }
 
-// Initialize Map once the DOM is loaded
+// Initialize the portal once the DOM is loaded: resolve the client from the
+// URL, fetch its config from Supabase, then build the map and panel.
 window.addEventListener('DOMContentLoaded', async () => {
+    const loading = document.getElementById('loading');
+    const slug = getClientSlugFromUrl();
+
+    if (!slug) {
+        showLanding();
+        return;
+    }
+
+    try {
+        CONFIG = await loadClientConfig(slug);
+    } catch (err) {
+        console.error('Erro ao carregar configuração do cliente:', err);
+        showLanding(`Não foi possível carregar o portal de "${slug}". ${err.message}`);
+        return;
+    }
+
+    DEFAULT_ACTIVE_LAYERS = [];
+    FARM_CODE_FIELDS = CONFIG.farmCodeFields || FARM_CODE_FIELDS;
+    styleConfig = {};
+    CONFIG.layerGroups.forEach(group => {
+        group.layers.forEach(layer => {
+            styleConfig[layer.id] = layer.style || { color: '#3388ff', weight: 2 };
+            if (layer.defaultActive) DEFAULT_ACTIVE_LAYERS.push(layer.id);
+        });
+    });
+
     if (CONFIG.clientName) {
         document.title = `Portal WebGIS - ${CONFIG.clientName} | AMBIUM Digital`;
         const nameEl = document.getElementById('client-name');
@@ -85,12 +142,32 @@ window.addEventListener('DOMContentLoaded', async () => {
     zoomToStudyArea();
 
     // Hide loading screen
-    const loading = document.getElementById('loading');
     if (loading) {
         loading.style.opacity = '0';
         setTimeout(() => loading.style.display = 'none', 400);
     }
 });
+
+// No valid /cliente/<slug>/ in the URL (or that client failed to load):
+// hide the map UI and show the landing screen instead.
+function showLanding(errorMessage) {
+    const loading = document.getElementById('loading');
+    if (loading) loading.style.display = 'none';
+
+    document.querySelector('header').style.display = 'none';
+    document.querySelector('.map-wrapper').style.display = 'none';
+
+    const landing = document.getElementById('landing');
+    if (landing) {
+        landing.style.display = 'flex';
+        if (errorMessage) {
+            const p = document.createElement('p');
+            p.style.color = '#E31A1C';
+            p.textContent = errorMessage;
+            landing.appendChild(p);
+        }
+    }
+}
 
 function initMap() {
     // Center at general region of interest
@@ -144,42 +221,30 @@ function initMap() {
     map.on('click', onMapClick);
 }
 
-// Load and parse a layer's GeoJSON file on demand.
-// Data files are published as "window.geojsonData_<name>_teste = {...};" globals.
-// We inject a <script> tag rather than fetch() so this also works when the
-// portal is opened directly via file:// (fetch() is blocked by CORS for local
-// files in Chrome/Edge, which caused layers to fail to load and the
-// "Não foi possível carregar a camada" error). Script tags load fine over file://
-// and let the JS engine parse the JSON natively, avoiding a redundant text parse.
+// Fetch a layer's GeoJSON from the public Supabase Storage bucket on demand.
+// Files live at client-data/<slug>/<layer_key>.geojson (uploaded by
+// scripts/upload-cliente.js). This is a real HTTPS endpoint with proper CORS
+// headers, so a plain fetch() works fine here (unlike loading the portal
+// directly via file://, which is what caused the old "Não foi possível
+// carregar a camada" errors when data lived as local script-tag files).
 function loadLayerData(name) {
     if (loadedLayerData[name]) return Promise.resolve(loadedLayerData[name]);
     if (layerLoadPromises[name]) return layerLoadPromises[name];
 
-    const varName = `geojsonData_${name}${DATA_SUFFIX}`;
-    const url = `data/${name}${DATA_SUFFIX}.js`;
+    const url = `${window.SUPABASE_URL}/storage/v1/object/public/client-data/${CONFIG.slug}/${name}.geojson`;
 
-    layerLoadPromises[name] = new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = url;
-        script.onload = () => {
-            const data = window[varName];
-            document.head.removeChild(script);
-            if (!data) {
-                reject(new Error(`Variável ${varName} não encontrada em ${url}`));
-                return;
-            }
+    layerLoadPromises[name] = fetch(url)
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        })
+        .then(data => {
             loadedLayerData[name] = data;
-            delete window[varName];
-            resolve(data);
-        };
-        script.onerror = () => {
-            document.head.removeChild(script);
-            reject(new Error(`Falha ao carregar ${url}`));
-        };
-        document.head.appendChild(script);
-    }).finally(() => {
-        delete layerLoadPromises[name];
-    });
+            return data;
+        })
+        .finally(() => {
+            delete layerLoadPromises[name];
+        });
 
     return layerLoadPromises[name];
 }

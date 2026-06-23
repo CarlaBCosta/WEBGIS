@@ -7,8 +7,10 @@ proj4.defs("EPSG:31982", "+proj=utm +zone=22 +south +ellps=GRS80 +towgs84=0,0,0,
 const proj = proj4("EPSG:31982", "EPSG:4326");
 
 // Each client exports GeoJSON from QGIS into its own subfolder of
-// BASE_INPUT_DIR (e.g. .../GEOJSON/usina-sao-jose/*.geojson), and gets its
-// data published into clientes/<id>/data/ where shared/app.js expects it.
+// BASE_INPUT_DIR (e.g. .../GEOJSON/usina-sao-jose/*.geojson). This script
+// simplifies/crops them and writes plain .geojson into ./processed/<id>/ -
+// a local staging folder (gitignored, never committed) that
+// scripts/upload-cliente.js then uploads straight to Supabase Storage.
 // Usage: node preprocess.js <id-do-cliente>
 const BASE_INPUT_DIR = 'C:\\Users\\carla.dalpian\\OneDrive - sigmagis.com.br\\Documentos\\Claude\\Projects\\8_WEBPORTAL\\GEOJSON';
 
@@ -20,7 +22,7 @@ if (!clientId) {
 }
 
 const INPUT_DIR = path.join(BASE_INPUT_DIR, clientId);
-const OUTPUT_DIR = path.join(__dirname, 'clientes', clientId, 'data');
+const OUTPUT_DIR = path.join(__dirname, 'processed', clientId);
 
 if (!fs.existsSync(INPUT_DIR)) {
     console.error(`Pasta de entrada não encontrada: ${INPUT_DIR}`);
@@ -300,15 +302,14 @@ function main() {
             features: processedFeatures
         };
 
-        // Write output as a JS file to bypass CORS issues on local execution
+        // Write plain .geojson - upload-cliente.js uploads this file as-is to
+        // Supabase Storage, so the layer_key (used in config and in the URL
+        // shared/app.js fetches) must match this filename without extension.
         const cleanName = file.replace('.geojson', '').replace(/[^a-zA-Z0-9_]/g, '_');
-        const jsVariableName = `geojsonData_${cleanName}`;
-        
-        const outputFilename = `${file.replace('.geojson', '')}.js`;
+        const outputFilename = `${cleanName}.geojson`;
         const outputPath = path.join(OUTPUT_DIR, outputFilename);
-        
-        const fileContent = `window.${jsVariableName} = ${JSON.stringify(outputCollection)};\n`;
-        fs.writeFileSync(outputPath, fileContent, 'utf8');
+
+        fs.writeFileSync(outputPath, JSON.stringify(outputCollection), 'utf8');
         
         const outStats = fs.statSync(outputPath);
         const outSizeMB = outStats.size / 1024 / 1024;

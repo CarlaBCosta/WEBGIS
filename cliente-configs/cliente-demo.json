@@ -1,0 +1,58 @@
+{
+    "slug": "cliente-demo",
+    "name": "Cliente Demo",
+    "mapCenter": [-21.90, -48.67],
+    "mapZoom": 11,
+    "zoomToLayer": "Area_de_Influencias_Direta_teste",
+    "farmCodeFields": ["FAZENDA", "CHAVE_USIN", "CHAVE_AMB", "PROPRIEDAD", "cod_imovel"],
+    "layerGroups": [
+        {
+            "title": "Empreendimento",
+            "layers": [
+                { "layerKey": "Usina_Principal_teste", "label": "Usina Principal", "legendStyle": "background-color: #E31A1C; border-color: #ffffff;", "style": { "color": "#E31A1C", "fillColor": "#E31A1C", "fillOpacity": 0.8, "weight": 3 }, "defaultActive": true },
+                { "layerKey": "Area_Diretamente_Afetada_teste", "label": "ADA (Área Direta Afetada)", "legendStyle": "background-color: rgba(227, 26, 28, 0.2); border: 2px dashed #E31A1C;", "style": { "color": "#E31A1C", "fillColor": "#E31A1C", "fillOpacity": 0.15, "weight": 2, "dashArray": "6, 6" }, "defaultActive": true },
+                { "layerKey": "Area_de_Influencias_Direta_teste", "label": "AID (Área de Influência)", "legendStyle": "background-color: rgba(31, 120, 180, 0.1); border: 2px solid #1F78B4;", "style": { "color": "#1F78B4", "fillColor": "#1F78B4", "fillOpacity": 0.08, "weight": 3 }, "defaultActive": true },
+                { "layerKey": "Usinas_Vizinhas_teste", "label": "Usinas Vizinhas", "legendStyle": "background-color: #FF7F00; border-radius: 50%;", "style": { "radius": 6, "fillColor": "#FF7F00", "color": "#fff", "weight": 1, "fillOpacity": 0.9 }, "defaultActive": true }
+            ]
+        },
+        {
+            "title": "Ambiental & Conservação",
+            "layers": [
+                { "layerKey": "Area_de_Preservacao_Permanente_teste", "label": "APP (Preservação Permanente)", "legendStyle": "background-color: rgba(51, 160, 44, 0.4); border-color: #33A02C;", "style": { "color": "#33A02C", "fillColor": "#33A02C", "fillOpacity": 0.3, "weight": 1.5 } },
+                { "layerKey": "Reserva_Legal_teste", "label": "Reserva Legal", "legendStyle": "background-color: rgba(178, 223, 138, 0.4); border-color: #B2DF8A;", "style": { "color": "#B2DF8A", "fillColor": "#B2DF8A", "fillOpacity": 0.35, "weight": 1.5 } },
+                { "layerKey": "Vegetacao_Nativa_teste", "label": "Vegetação Nativa", "legendStyle": "background-color: rgba(51, 160, 44, 0.7); border-color: #1E5618;", "style": { "color": "#1E5618", "fillColor": "#2E8B57", "fillOpacity": 0.4, "weight": 1.5 } },
+                { "layerKey": "Turfeiras_teste", "label": "Turfeiras (Áreas Úmidas)", "legendStyle": "background-color: rgba(166, 97, 26, 0.5); border-color: #A6611A;", "style": { "color": "#A6611A", "fillColor": "#A6611A", "fillOpacity": 0.4, "weight": 1.5 } },
+                { "layerKey": "UC_teste", "label": "Unidades de Conservação (UC)", "legendStyle": "background-color: rgba(227, 26, 28, 0.3); border: 1px dashed #E31A1C;", "style": { "color": "#E31A1C", "fillColor": "#E31A1C", "fillOpacity": 0.1, "weight": 1.5, "dashArray": "4, 4" } },
+                { "layerKey": "RAMSAR_teste", "label": "Sítios RAMSAR", "legendStyle": "background-color: rgba(1, 102, 94, 0.4); border-color: #01665E;", "style": { "color": "#01665E", "fillColor": "#01665E", "fillOpacity": 0.3, "weight": 1.5 } },
+                { "layerKey": "Birdlife_teste", "label": "Áreas Importantes de Aves", "legendStyle": "background-color: rgba(253, 191, 111, 0.4); border-color: #FDBF6F;", "style": { "color": "#FDBF6F", "fillColor": "#FDBF6F", "fillOpacity": 0.3, "weight": 1.5 } }
+            ]
+        },
+        {
+            "title": "Recursos Hídricos",
+            "layers": [
+                { "layerKey": "Corpos_dagua_teste", "label": "Corpos d'água", "legendStyle": "background-color: #A6CEE3; border-color: #1F78B4;", "style": { "color": "#1F78B4", "fillColor": "#A6CEE3", "fillOpacity": 0.7, "weight": 1 } },
+                { "layerKey": "Hidrografia_teste", "label": "Canais / Hidrografia", "legendStyle": "border-bottom: 2px solid #1F78B4; background: none; border-radius: 0;", "style": { "color": "#1F78B4", "weight": 2 } },
+                { "layerKey": "Sub_bacias_teste", "label": "Sub-bacias", "legendStyle": "background-color: rgba(202, 178, 214, 0.3); border-color: #CAB2D6;", "style": { "color": "#CAB2D6", "fillColor": "#CAB2D6", "fillOpacity": 0.2, "weight": 1.5 } },
+                { "layerKey": "Outorgas_Superficiais_teste", "label": "Outorgas Superficiais", "legendStyle": "background-color: #00BFFF; border-radius: 50%;", "style": { "radius": 5, "fillColor": "#00BFFF", "color": "#fff", "weight": 1, "fillOpacity": 0.8 } },
+                { "layerKey": "Outorgas_Subterraneas_teste", "label": "Outorgas Subterrâneas", "legendStyle": "background-color: #8A2BE2; border-radius: 50%;", "style": { "radius": 5, "fillColor": "#8A2BE2", "color": "#fff", "weight": 1, "fillOpacity": 0.8 } }
+            ]
+        },
+        {
+            "title": "Socioambiental & Cultural",
+            "layers": [
+                { "layerKey": "Assentamentos_Rurais_teste", "label": "Assentamentos Rurais", "legendStyle": "background-color: rgba(251, 154, 153, 0.4); border-color: #FB9A99;", "style": { "color": "#FB9A99", "fillColor": "#FB9A99", "fillOpacity": 0.3, "weight": 1.5 } },
+                { "layerKey": "Areas_Quilombolas_teste", "label": "Áreas Quilombolas", "legendStyle": "background-color: rgba(227, 26, 28, 0.4); border-color: #E31A1C;", "style": { "color": "#E31A1C", "fillColor": "#E31A1C", "fillOpacity": 0.25, "weight": 1.5 } },
+                { "layerKey": "Terras_Indigenas_teste", "label": "Terras Indígenas", "legendStyle": "background-color: rgba(255, 127, 0, 0.4); border-color: #FF7F00;", "style": { "color": "#FF7F00", "fillColor": "#FF7F00", "fillOpacity": 0.3, "weight": 1.5 } },
+                { "layerKey": "Patrimonio_Cultural_teste", "label": "Patrimônio Cultural", "legendStyle": "background-color: #FFD700; border-radius: 50%;", "style": { "radius": 6, "fillColor": "#FFD700", "color": "#222", "weight": 1.5, "fillOpacity": 0.9 } },
+                { "layerKey": "Sitios_Arqueologicos_teste", "label": "Sítios Arqueológicos", "legendStyle": "background-color: #FF4500; border-radius: 50%;", "style": { "radius": 6, "fillColor": "#FF4500", "color": "#fff", "weight": 1, "fillOpacity": 0.9 } }
+            ]
+        },
+        {
+            "title": "Solo & Outros",
+            "layers": [
+                { "layerKey": "Erodibilidade_teste", "label": "Erodibilidade do Solo", "legendStyle": "background-color: rgba(177, 89, 40, 0.4); border-color: #B15928;", "style": { "color": "#B15928", "fillColor": "#B15928", "fillOpacity": 0.3, "weight": 1.5 } },
+                { "layerKey": "BAZE_teste", "label": "Limite Bacia (BAZE)", "legendStyle": "background-color: rgba(150, 150, 150, 0.2); border: 1px solid #969696;", "style": { "color": "#969696", "weight": 2 } }
+            ]
+        }
+    ]
+}

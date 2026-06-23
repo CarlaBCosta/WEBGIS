@@ -7,6 +7,7 @@
     "preprocess": "node preprocess.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
     "proj4": "^2.11.0"
   }
 }

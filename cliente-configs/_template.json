@@ -1,0 +1,35 @@
+{
+    "_comentario": "Copie para cliente-configs/<slug>.json e ajuste. layerKey deve bater com o nome do arquivo .geojson gerado por preprocess.js (sem a extensão).",
+    "slug": "NOME_DO_CLIENTE_AQUI",
+    "name": "Nome do Cliente Aqui",
+    "mapCenter": [-21.90, -48.67],
+    "mapZoom": 11,
+    "zoomToLayer": "Area_de_Influencias_Direta",
+    "farmCodeFields": ["FAZENDA", "CHAVE_USIN", "CHAVE_AMB", "PROPRIEDAD", "cod_imovel"],
+    "layerGroups": [
+        {
+            "title": "Empreendimento",
+            "layers": [
+                { "layerKey": "Usina_Principal", "label": "Usina Principal", "legendStyle": "background-color: #E31A1C; border-color: #ffffff;", "style": { "color": "#E31A1C", "fillColor": "#E31A1C", "fillOpacity": 0.8, "weight": 3 }, "defaultActive": true },
+                { "layerKey": "Area_Diretamente_Afetada", "label": "ADA (Área Direta Afetada)", "legendStyle": "background-color: rgba(227, 26, 28, 0.2); border: 2px dashed #E31A1C;", "style": { "color": "#E31A1C", "fillColor": "#E31A1C", "fillOpacity": 0.15, "weight": 2, "dashArray": "6, 6" }, "defaultActive": true },
+                { "layerKey": "Area_de_Influencias_Direta", "label": "AID (Área de Influência)", "legendStyle": "background-color: rgba(31, 120, 180, 0.1); border: 2px solid #1F78B4;", "style": { "color": "#1F78B4", "fillColor": "#1F78B4", "fillOpacity": 0.08, "weight": 3 }, "defaultActive": true },
+                { "layerKey": "Usinas_Vizinhas", "label": "Usinas Vizinhas", "legendStyle": "background-color: #FF7F00; border-radius: 50%;", "style": { "radius": 6, "fillColor": "#FF7F00", "color": "#fff", "weight": 1, "fillOpacity": 0.9 }, "defaultActive": true }
+            ]
+        },
+        {
+            "title": "Ambiental & Conservação",
+            "layers": [
+                { "layerKey": "Area_de_Preservacao_Permanente", "label": "APP (Preservação Permanente)", "legendStyle": "background-color: rgba(51, 160, 44, 0.4); border-color: #33A02C;", "style": { "color": "#33A02C", "fillColor": "#33A02C", "fillOpacity": 0.3, "weight": 1.5 } },
+                { "layerKey": "Reserva_Legal", "label": "Reserva Legal", "legendStyle": "background-color: rgba(178, 223, 138, 0.4); border-color: #B2DF8A;", "style": { "color": "#B2DF8A", "fillColor": "#B2DF8A", "fillOpacity": 0.35, "weight": 1.5 } },
+                { "layerKey": "UC", "label": "Unidades de Conservação (UC)", "legendStyle": "background-color: rgba(227, 26, 28, 0.3); border: 1px dashed #E31A1C;", "style": { "color": "#E31A1C", "fillColor": "#E31A1C", "fillOpacity": 0.1, "weight": 1.5, "dashArray": "4, 4" } }
+            ]
+        },
+        {
+            "title": "Recursos Hídricos",
+            "layers": [
+                { "layerKey": "Corpos_dagua", "label": "Corpos d'água", "legendStyle": "background-color: #A6CEE3; border-color: #1F78B4;", "style": { "color": "#1F78B4", "fillColor": "#A6CEE3", "fillOpacity": 0.7, "weight": 1 } },
+                { "layerKey": "Hidrografia", "label": "Canais / Hidrografia", "legendStyle": "border-bottom: 2px solid #1F78B4; background: none; border-radius: 0;", "style": { "color": "#1F78B4", "weight": 2 } }
+            ]
+        }
+    ]
+}
