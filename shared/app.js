@@ -1,4 +1,9 @@
 // --- WebGIS Portal Main JavaScript - AMBIUM Digital ---
+// Shared by every client portal under clientes/<id>/. Each client supplies a
+// window.CLIENT_CONFIG (see clientes/_template/config.js) describing its map
+// view, default layers and the layer panel structure; this file contains no
+// client-specific data so a bug fix or UI improvement here benefits every
+// client portal at once.
 
 // Global variables
 let map;
@@ -11,45 +16,70 @@ let measureTooltip;
 let highlightLayer = null;
 let currentFarmFilter = '';
 
+const CONFIG = window.CLIENT_CONFIG;
+if (!CONFIG) {
+    throw new Error('window.CLIENT_CONFIG não definido. Inclua o config.js do cliente antes de shared/app.js.');
+}
+
 // Layers that come on by default and are needed immediately (study area bounds, etc.)
-const DEFAULT_ACTIVE_LAYERS = ['Usina_Principal', 'Area_Diretamente_Afetada', 'Area_de_Influencias_Direta', 'Usinas_Vizinhas'];
+const DEFAULT_ACTIVE_LAYERS = CONFIG.defaultActiveLayers || [];
 
 // Candidate properties that may hold the farm/property code, checked in order
-const FARM_CODE_FIELDS = ['FAZENDA', 'CHAVE_USIN', 'CHAVE_AMB', 'PROPRIEDAD', 'cod_imovel'];
+const FARM_CODE_FIELDS = CONFIG.farmCodeFields || ['FAZENDA', 'CHAVE_USIN', 'CHAVE_AMB', 'PROPRIEDAD', 'cod_imovel'];
+
+// Suffix appended to data file names and global variable names, e.g. data
+// exported from older preprocess.js runs is named "<id>_teste.js". New
+// clients can leave this empty if their exported files are named "<id>.js".
+const DATA_SUFFIX = CONFIG.dataSuffix !== undefined ? CONFIG.dataSuffix : '_teste';
 
 // Cache of parsed GeoJSON per layer, fetched lazily on first activation
 const loadedLayerData = {};
 const layerLoadPromises = {};
 
-// Color palette mapping for styling
-const styleConfig = {
-    Usina_Principal: { color: '#E31A1C', fillColor: '#E31A1C', fillOpacity: 0.8, weight: 3 },
-    Area_Diretamente_Afetada: { color: '#E31A1C', fillColor: '#E31A1C', fillOpacity: 0.15, weight: 2, dashArray: '6, 6' },
-    Area_de_Influencias_Direta: { color: '#1F78B4', fillColor: '#1F78B4', fillOpacity: 0.08, weight: 3 },
-    Usinas_Vizinhas: { radius: 6, fillColor: '#FF7F00', color: '#fff', weight: 1, fillOpacity: 0.9 },
-    Area_de_Preservacao_Permanente: { color: '#33A02C', fillColor: '#33A02C', fillOpacity: 0.3, weight: 1.5 },
-    Reserva_Legal: { color: '#B2DF8A', fillColor: '#B2DF8A', fillOpacity: 0.35, weight: 1.5 },
-    Vegetacao_Nativa: { color: '#1E5618', fillColor: '#2E8B57', fillOpacity: 0.4, weight: 1.5 },
-    Turfeiras: { color: '#A6611A', fillColor: '#A6611A', fillOpacity: 0.4, weight: 1.5 },
-    UC: { color: '#E31A1C', fillColor: '#E31A1C', fillOpacity: 0.1, weight: 1.5, dashArray: '4, 4' },
-    RAMSAR: { color: '#01665E', fillColor: '#01665E', fillOpacity: 0.3, weight: 1.5 },
-    Birdlife: { color: '#FDBF6F', fillColor: '#FDBF6F', fillOpacity: 0.3, weight: 1.5 },
-    Corpos_dagua: { color: '#1F78B4', fillColor: '#A6CEE3', fillOpacity: 0.7, weight: 1 },
-    Hidrografia: { color: '#1F78B4', weight: 2 },
-    Sub_bacias: { color: '#CAB2D6', fillColor: '#CAB2D6', fillOpacity: 0.2, weight: 1.5 },
-    Outorgas_Superficiais: { radius: 5, fillColor: '#00BFFF', color: '#fff', weight: 1, fillOpacity: 0.8 },
-    Outorgas_Subterraneas: { radius: 5, fillColor: '#8A2BE2', color: '#fff', weight: 1, fillOpacity: 0.8 },
-    Assentamentos_Rurais: { color: '#FB9A99', fillColor: '#FB9A99', fillOpacity: 0.3, weight: 1.5 },
-    Areas_Quilombolas: { color: '#E31A1C', fillColor: '#E31A1C', fillOpacity: 0.25, weight: 1.5 },
-    Terras_Indigenas: { color: '#FF7F00', fillColor: '#FF7F00', fillOpacity: 0.3, weight: 1.5 },
-    Patrimonio_Cultural: { radius: 6, fillColor: '#FFD700', color: '#222', weight: 1.5, fillOpacity: 0.9 },
-    Sitios_Arqueologicos: { radius: 6, fillColor: '#FF4500', color: '#fff', weight: 1, fillOpacity: 0.9 },
-    Erodibilidade: { color: '#B15928', fillColor: '#B15928', fillOpacity: 0.3, weight: 1.5 },
-    BAZE: { color: '#969696', weight: 2 }
-};
+// Style/legend lookup built from CONFIG.layerGroups (flattened) instead of a
+// hardcoded per-client object, so every client can have its own palette.
+const styleConfig = {};
+(CONFIG.layerGroups || []).forEach(group => {
+    (group.layers || []).forEach(layer => {
+        styleConfig[layer.id] = layer.style || { color: '#3388ff', weight: 2 };
+    });
+});
+
+// Build the "Camadas do Projeto" panel markup from CONFIG.layerGroups
+function renderLayerPanel() {
+    const container = document.getElementById('panel-content');
+    if (!container) return;
+
+    container.innerHTML = (CONFIG.layerGroups || []).map(group => `
+        <div class="layer-group">
+            <div class="group-title">${group.title}</div>
+            ${(group.layers || []).map(layer => {
+                const isDefault = DEFAULT_ACTIVE_LAYERS.includes(layer.id);
+                return `
+                <div class="layer-item${isDefault ? ' active' : ''}" onclick="toggleLayer('${layer.id}')">
+                    <div class="layer-label">
+                        <span class="layer-legend-icon" style="${layer.legendStyle || ''}"></span>
+                        ${layer.label}
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="chk_${layer.id}" ${isDefault ? 'checked' : ''} onclick="event.stopPropagation(); toggleLayer('${layer.id}')">
+                        <span class="slider"></span>
+                    </label>
+                </div>`;
+            }).join('')}
+        </div>
+    `).join('');
+}
 
 // Initialize Map once the DOM is loaded
 window.addEventListener('DOMContentLoaded', async () => {
+    if (CONFIG.clientName) {
+        document.title = `Portal WebGIS - ${CONFIG.clientName} | AMBIUM Digital`;
+        const nameEl = document.getElementById('client-name');
+        if (nameEl) nameEl.textContent = CONFIG.clientName;
+    }
+
+    renderLayerPanel();
     initMap();
     await initDefaultLayers();
     zoomToStudyArea();
@@ -72,7 +102,7 @@ function initMap() {
         // to create/destroy on add/remove), which was the cause of the lag
         // when switching layers on/off.
         preferCanvas: true
-    }).setView([-21.90, -48.67], 11);
+    }).setView(CONFIG.mapCenter || [-21.90, -48.67], CONFIG.mapZoom || 11);
 
     // Add scale bar
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
@@ -125,8 +155,8 @@ function loadLayerData(name) {
     if (loadedLayerData[name]) return Promise.resolve(loadedLayerData[name]);
     if (layerLoadPromises[name]) return layerLoadPromises[name];
 
-    const varName = `geojsonData_${name}_teste`;
-    const url = `data/${name}_teste.js`;
+    const varName = `geojsonData_${name}${DATA_SUFFIX}`;
+    const url = `data/${name}${DATA_SUFFIX}.js`;
 
     layerLoadPromises[name] = new Promise((resolve, reject) => {
         const script = document.createElement('script');
@@ -398,10 +428,11 @@ function setSatelliteYear(year) {
     activeSatelliteYear = year;
 }
 
-// Zoom to client's study area (AID)
+// Zoom to client's study area, as configured by zoomToLayerOnLoad
 function zoomToStudyArea() {
-    if (activeLayers['Area_de_Influencias_Direta']) {
-        map.fitBounds(activeLayers['Area_de_Influencias_Direta'].getBounds(), { padding: [40, 40] });
+    const target = CONFIG.zoomToLayerOnLoad;
+    if (target && activeLayers[target]) {
+        map.fitBounds(activeLayers[target].getBounds(), { padding: [40, 40] });
     }
 }
 

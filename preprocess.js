@@ -6,8 +6,27 @@ const proj4 = require('proj4');
 proj4.defs("EPSG:31982", "+proj=utm +zone=22 +south +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs");
 const proj = proj4("EPSG:31982", "EPSG:4326");
 
-const INPUT_DIR = 'C:\\Users\\carla.dalpian\\OneDrive - sigmagis.com.br\\Documentos\\Claude\\Projects\\8_WEBPORTAL\\GEOJSON';
-const OUTPUT_DIR = 'C:\\Users\\carla.dalpian\\.gemini\\antigravity\\scratch\\webgis_portal\\data';
+// Each client exports GeoJSON from QGIS into its own subfolder of
+// BASE_INPUT_DIR (e.g. .../GEOJSON/usina-sao-jose/*.geojson), and gets its
+// data published into clientes/<id>/data/ where shared/app.js expects it.
+// Usage: node preprocess.js <id-do-cliente>
+const BASE_INPUT_DIR = 'C:\\Users\\carla.dalpian\\OneDrive - sigmagis.com.br\\Documentos\\Claude\\Projects\\8_WEBPORTAL\\GEOJSON';
+
+const clientId = process.argv[2];
+if (!clientId) {
+    console.error('Uso: node preprocess.js <id-do-cliente>');
+    console.error(`Os arquivos .geojson exportados do QGIS devem estar em: ${BASE_INPUT_DIR}\\<id-do-cliente>\\`);
+    process.exit(1);
+}
+
+const INPUT_DIR = path.join(BASE_INPUT_DIR, clientId);
+const OUTPUT_DIR = path.join(__dirname, 'clientes', clientId, 'data');
+
+if (!fs.existsSync(INPUT_DIR)) {
+    console.error(`Pasta de entrada não encontrada: ${INPUT_DIR}`);
+    console.error('Crie a pasta e exporte os .geojson do QGIS nela antes de rodar este script.');
+    process.exit(1);
+}
 
 // Create output directory if it doesn't exist
 if (!fs.existsSync(OUTPUT_DIR)) {
@@ -164,34 +183,38 @@ function main() {
     console.log(`Input Directory: ${INPUT_DIR}`);
     console.log(`Output Directory: ${OUTPUT_DIR}\n`);
 
-    // Load the study area (AID) to get reference bounding box
-    const aidFile = path.join(INPUT_DIR, 'Area_de_Influencias_Direta_teste.geojson');
-    if (!fs.existsSync(aidFile)) {
-        console.error("Critical Error: Area_de_Influencias_Direta_teste.geojson not found in input folder!");
-        return;
+    // Load the study area (AID) to get a reference bounding box, used to crop
+    // large regional layers down to what's near this client's project. Matches
+    // any "Area_de_Influencias_Direta*.geojson" file; if none is found, the
+    // spatial crop step below is simply skipped (every feature is kept).
+    const aidFileName = fs.readdirSync(INPUT_DIR).find(f => /Area_de_Influencias_Direta.*\.geojson$/i.test(f));
+    let filterBox = null;
+
+    if (aidFileName) {
+        const aidData = JSON.parse(fs.readFileSync(path.join(INPUT_DIR, aidFileName), 'utf8'));
+        let aidMinX = Infinity, aidMinY = Infinity, aidMaxX = -Infinity, aidMaxY = -Infinity;
+        aidData.features.forEach(f => {
+            const box = getFeatureBBox(f);
+            if (box.minX < aidMinX) aidMinX = box.minX;
+            if (box.minY < aidMinY) aidMinY = box.minY;
+            if (box.maxX > aidMaxX) aidMaxX = box.maxX;
+            if (box.maxY > aidMaxY) aidMaxY = box.maxY;
+        });
+
+        console.log(`Study Area UTM BBox: MinX: ${aidMinX}, MinY: ${aidMinY}, MaxX: ${aidMaxX}, MaxY: ${aidMaxY}`);
+
+        // Add 30km (30,000 meters) buffer for filtering large regional layers
+        const BUFFER = 30000;
+        filterBox = {
+            minX: aidMinX - BUFFER,
+            minY: aidMinY - BUFFER,
+            maxX: aidMaxX + BUFFER,
+            maxY: aidMaxY + BUFFER
+        };
+        console.log(`Filter Buffer BBox (30km buffer): MinX: ${filterBox.minX}, MinY: ${filterBox.minY}, MaxX: ${filterBox.maxX}, MaxY: ${filterBox.maxY}\n`);
+    } else {
+        console.warn('Aviso: nenhum arquivo "Area_de_Influencias_Direta*.geojson" encontrado - camadas grandes não serão recortadas espacialmente, apenas simplificadas.\n');
     }
-
-    const aidData = JSON.parse(fs.readFileSync(aidFile, 'utf8'));
-    let aidMinX = Infinity, aidMinY = Infinity, aidMaxX = -Infinity, aidMaxY = -Infinity;
-    aidData.features.forEach(f => {
-        const box = getFeatureBBox(f);
-        if (box.minX < aidMinX) aidMinX = box.minX;
-        if (box.minY < aidMinY) aidMinY = box.minY;
-        if (box.maxX > aidMaxX) aidMaxX = box.maxX;
-        if (box.maxY > aidMaxY) aidMaxY = box.maxY;
-    });
-
-    console.log(`Study Area UTM BBox: MinX: ${aidMinX}, MinY: ${aidMinY}, MaxX: ${aidMaxX}, MaxY: ${aidMaxY}`);
-    
-    // Add 30km (30,000 meters) buffer for filtering large regional layers
-    const BUFFER = 30000;
-    const filterBox = {
-        minX: aidMinX - BUFFER,
-        minY: aidMinY - BUFFER,
-        maxX: aidMaxX + BUFFER,
-        maxY: aidMaxY + BUFFER
-    };
-    console.log(`Filter Buffer BBox (30km buffer): MinX: ${filterBox.minX}, MinY: ${filterBox.minY}, MaxX: ${filterBox.maxX}, MaxY: ${filterBox.maxY}\n`);
 
     const files = fs.readdirSync(INPUT_DIR).filter(f => f.endsWith('.geojson'));
 
@@ -236,11 +259,12 @@ function main() {
         geojson.features.forEach(feature => {
             if (!feature.geometry) return;
 
-            // Apply spatial overlap filter ONLY for large files to optimize performance
-            if (isLarge) {
+            // Apply spatial overlap filter ONLY for large files, and only when
+            // we have a study-area bounding box to filter against
+            if (isLarge && filterBox) {
                 const featBox = getFeatureBBox(feature);
                 if (featBox.minX === Infinity) return; // invalid geometry
-                
+
                 if (!checkBBoxOverlap(featBox, filterBox)) {
                     // Does not overlap with the study area + buffer, skip it!
                     return;
