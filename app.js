@@ -66,7 +66,12 @@ function initMap() {
     // Center at general region of interest
     map = L.map('map', {
         zoomControl: true,
-        attributionControl: true
+        attributionControl: true,
+        // Canvas rendering is much faster than the default SVG renderer when
+        // toggling layers with thousands of features (no per-feature DOM nodes
+        // to create/destroy on add/remove), which was the cause of the lag
+        // when switching layers on/off.
+        preferCanvas: true
     }).setView([-21.90, -48.67], 11);
 
     // Add scale bar

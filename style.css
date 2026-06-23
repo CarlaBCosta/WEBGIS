@@ -52,6 +52,9 @@ header {
 .logo-container img {
     height: 40px;
     object-fit: contain;
+    background: #f5f6f7;
+    border-radius: 8px;
+    padding: 6px 10px;
 }
 
 .header-title h1 {
