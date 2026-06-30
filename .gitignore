@@ -1,4 +1,7 @@
 node_modules/
 .claude/
 .env
+.env.local
 processed/
+.next/
+*.tsbuildinfo

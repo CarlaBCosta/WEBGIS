@@ -1,0 +1,45 @@
+// Ported verbatim from shared/app.js - maps raw GeoJSON property keys to
+// human-readable labels for the feature info panel.
+export const propertyDisplayNames: Record<string, string> = {
+  id: 'ID',
+  nome: 'Nome',
+  sigla: 'Sigla',
+  municipio: 'Município',
+  estado: 'Estado',
+  area_ha: 'Área (ha)',
+  perimetro_m: 'Perímetro (m)',
+  identifica: 'Nome/Identificação',
+  usina: 'Nome da Usina',
+  capacidade: 'Capacidade (MW)',
+  potencia: 'Potência Inst.',
+  status: 'Status',
+  empresa: 'Empresa',
+  vazao_m3h: 'Vazão (m³/h)',
+  tipo_uso: 'Tipo de Uso',
+  finalidade: 'Finalidade',
+  tipo_outorga: 'Tipo de Outorga',
+  num_outorga: 'Número da Outorga',
+  validad: 'Validade',
+  processo: 'Nº Processo',
+  substancia: 'Substância',
+  id_bem: 'Código do Bem',
+  co_iphan: 'Nº Registro IPHAN',
+  ds_naturez: 'Natureza do Bem',
+  ds_classif: 'Classificação',
+  ds_tipo_be: 'Tipo de Bem',
+  sintese_be: 'Descrição Resumida',
+  dt_cadastr: 'Data Cadastro',
+  tipo_app: 'Tipo de APP',
+  tipo_veg: 'Fisionomia Vegetal',
+  estagio_suc: 'Estágio Sucessório',
+  supressao: 'Autoriz. Supressão',
+  erodibilid: 'Classe de Erodibilidade',
+  nome_uc: 'Nome da UC',
+  grupo_uc: 'Grupo da UC',
+  categoria: 'Categoria da UC',
+  esfera: 'Esfera Administrativa',
+};
+
+export function formatLabel(key: string): string {
+  return propertyDisplayNames[key.toLowerCase()] || key;
+}

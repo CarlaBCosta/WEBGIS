@@ -1,13 +1,40 @@
 {
   "name": "ambium-webgis-portal",
-  "version": "1.0.0",
-  "description": "Interactive WebGIS portal for Ambium Digital",
-  "main": "preprocess.js",
+  "version": "2.0.0",
+  "private": true,
+  "description": "WebGIS multi-tenant portal for Ambium Digital (Next.js)",
   "scripts": {
-    "preprocess": "node preprocess.js"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "preprocess": "tsx scripts/preprocess.ts",
+    "upload-cliente": "tsx scripts/upload-cliente.ts"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@supabase/supabase-js": "^2.108.2",
-    "proj4": "^2.11.0"
+    "@turf/turf": "^7.2.0",
+    "leaflet": "^1.9.4",
+    "next": "16.2.9",
+    "proj4": "^2.11.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.12",
+    "@types/node": "^20",
+    "@types/proj4": "^2.5.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "tsx": "^4.19.2",
+    "typescript": "^5"
   }
 }
