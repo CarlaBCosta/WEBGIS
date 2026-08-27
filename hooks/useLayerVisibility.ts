@@ -2,7 +2,8 @@ import { useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { ClientConfig } from '@/lib/types/domain';
 import type { LayerStyle } from '@/lib/types/database';
-import type { FeatureCollectionData } from './useLayerData';
+import { bufferBoundsKm } from '@/lib/geo/mapBounds';
+import { LayerNotFoundError, type FeatureCollectionData } from './useLayerData';
 
 export type LayerStatus = 'idle' | 'loading' | 'active' | 'error';
 
@@ -51,9 +52,14 @@ export function useLayerVisibility(
   map: L.Map | null,
   config: ClientConfig,
   loadLayer: (layerKey: string) => Promise<FeatureCollectionData>,
-  onFeatureClick: (feature: GeoJSON.Feature, layerName: string) => void
+  onFeatureClick: (feature: GeoJSON.Feature, layerName: string) => void,
+  onTransientError?: (layerLabel: string) => void
 ) {
   const activeLayersRef = useRef<Map<string, L.GeoJSON>>(new Map());
+  // Extensão máxima de navegação (bbox da AID + buffer), calculada uma vez
+  // após o carregamento das camadas padrão. Reutilizada pelo botão
+  // "Centralizar na Área de Estudo".
+  const studyBoundsRef = useRef<L.LatLngBounds | null>(null);
   const [status, setStatus] = useState<Record<string, LayerStatus>>({});
   const [visible, setVisible] = useState<Record<string, boolean>>({});
 
@@ -64,6 +70,17 @@ export function useLayerVisibility(
         if (layer) return layer.style || { color: '#3388ff', weight: 2 };
       }
       return { color: '#3388ff', weight: 2 };
+    },
+    [config]
+  );
+
+  const labelFor = useCallback(
+    (layerKey: string): string => {
+      for (const group of config.layerGroups) {
+        const layer = group.layers.find((l) => l.id === layerKey);
+        if (layer) return layer.label;
+      }
+      return layerKey;
     },
     [config]
   );
@@ -89,6 +106,8 @@ export function useLayerVisibility(
       try {
         const data = await loadLayer(layerKey);
         if (!data || !data.features || data.features.length === 0) {
+          // Camada existe mas está vazia: mesmo tratamento de "sem dados"
+          // (desabilita permanentemente, sem necessidade de novo alerta).
           setStatus((s) => ({ ...s, [layerKey]: 'error' }));
           return;
         }
@@ -98,11 +117,19 @@ export function useLayerVisibility(
         setStatus((s) => ({ ...s, [layerKey]: 'active' }));
         setVisible((v) => ({ ...v, [layerKey]: true }));
         onMatchFilter?.(layerKey);
-      } catch {
-        setStatus((s) => ({ ...s, [layerKey]: 'error' }));
+      } catch (err) {
+        if (err instanceof LayerNotFoundError) {
+          // Sem arquivo de dados: desabilita o toggle permanentemente.
+          setStatus((s) => ({ ...s, [layerKey]: 'error' }));
+        } else {
+          // Falha transitória (rede, 5xx, JSON inválido): avisa e libera
+          // o toggle para uma nova tentativa, conforme PRD.
+          setStatus((s) => ({ ...s, [layerKey]: 'idle' }));
+          onTransientError?.(labelFor(layerKey));
+        }
       }
     },
-    [map, loadLayer, styleFor, onFeatureClick]
+    [map, loadLayer, styleFor, labelFor, onFeatureClick, onTransientError]
   );
 
   const loadDefaultLayers = useCallback(
@@ -122,13 +149,18 @@ export function useLayerVisibility(
             layer.addTo(map);
             setStatus((s) => ({ ...s, [layerKey]: 'active' }));
             setVisible((v) => ({ ...v, [layerKey]: true }));
-          } catch {
-            setStatus((s) => ({ ...s, [layerKey]: 'error' }));
+          } catch (err) {
+            if (err instanceof LayerNotFoundError) {
+              setStatus((s) => ({ ...s, [layerKey]: 'error' }));
+            } else {
+              setStatus((s) => ({ ...s, [layerKey]: 'idle' }));
+              onTransientError?.(labelFor(layerKey));
+            }
           }
         })
       );
     },
-    [map, loadLayer, styleFor, onFeatureClick]
+    [map, loadLayer, styleFor, labelFor, onFeatureClick, onTransientError]
   );
 
   const zoomToLayer = useCallback(
@@ -140,6 +172,42 @@ export function useLayerVisibility(
     [map]
   );
 
+  // Define a extensão máxima de navegação: bbox da camada da área de estudo
+  // (AID) + buffer em km. Trava pan (maxBounds) e zoom-out (minZoom) nessa
+  // extensão e enquadra o mapa nela. Retorna false se a camada não estiver
+  // carregada (o chamador decide o fallback).
+  const applyStudyAreaExtent = useCallback(
+    (layerKey: string | null, bufferKm: number): boolean => {
+      if (!map || !layerKey) return false;
+      const layer = activeLayersRef.current.get(layerKey);
+      if (!layer) return false;
+      const raw = layer.getBounds();
+      if (!raw.isValid()) return false;
+
+      const buffered = bufferBoundsKm(
+        { south: raw.getSouth(), west: raw.getWest(), north: raw.getNorth(), east: raw.getEast() },
+        bufferKm
+      );
+      const bounds = L.latLngBounds(
+        [buffered.south, buffered.west],
+        [buffered.north, buffered.east]
+      );
+      studyBoundsRef.current = bounds;
+      map.setMaxBounds(bounds);
+      map.setMinZoom(map.getBoundsZoom(bounds));
+      map.fitBounds(bounds);
+      return true;
+    },
+    [map]
+  );
+
+  // Botão "Centralizar": volta sempre para a mesma extensão AID + buffer.
+  const zoomToStudyArea = useCallback((): boolean => {
+    if (!map || !studyBoundsRef.current) return false;
+    map.fitBounds(studyBoundsRef.current);
+    return true;
+  }, [map]);
+
   return {
     activeLayers: activeLayersRef.current,
     status,
@@ -147,5 +215,7 @@ export function useLayerVisibility(
     toggleLayer,
     loadDefaultLayers,
     zoomToLayer,
+    applyStudyAreaExtent,
+    zoomToStudyArea,
   };
 }

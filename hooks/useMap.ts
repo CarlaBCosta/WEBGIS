@@ -22,6 +22,9 @@ export function useMap(
       // Canvas rendering avoids per-feature DOM nodes, critical for
       // toggling layers with thousands of features without lag.
       preferCanvas: true,
+      // Clamp rígido quando maxBounds for definido (extensão AID + buffer):
+      // sem "quicar" além do limite ao arrastar.
+      maxBoundsViscosity: 1.0,
     }).setView(center, zoom);
 
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(instance);

@@ -25,15 +25,21 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const slug = body.slug ? slugify(body.slug) : slugify(body.name);
 
+  // Autoria: nome informado no login do painel (cookie da sessão).
+  const rawUser = request.cookies.get('admin_user')?.value;
+  const createdBy = rawUser ? decodeURIComponent(rawUser) : null;
+
   const { data, error } = await supabaseAdmin
     .from('clients')
     .insert({
       slug,
       name: body.name,
+      created_by: createdBy,
       map_center_lat: body.mapCenterLat ?? -21.9,
       map_center_lng: body.mapCenterLng ?? -48.67,
       map_zoom: body.mapZoom ?? 11,
       zoom_to_layer: body.zoomToLayer || null,
+      map_bounds_buffer_km: body.maxBoundsBufferKm ?? 30,
       farm_code_fields: body.farmCodeFields ?? ['FAZENDA', 'CHAVE_USIN', 'CHAVE_AMB', 'PROPRIEDAD', 'cod_imovel'],
       primary_color: body.primaryColor || '#9ACD32',
       logo_url: body.logoUrl || null,

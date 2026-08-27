@@ -17,6 +17,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@supabase/supabase-js": "^2.108.2",
     "@turf/turf": "^7.2.0",
+    "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "next": "16.2.9",
     "proj4": "^2.11.0",

@@ -21,11 +21,12 @@ npm run dev
 
 1. Rode `supabase/schema.sql` no SQL Editor do Supabase (base: tabelas `clients`, `layer_groups`, `layers`).
 2. Rode `supabase/migrations/0001_admin_panel_fields.sql` (campos usados pelo painel admin: `logo_url`, `primary_color`, `is_active`, `storage_path`, etc.).
-3. Crie o bucket público `client-data` em Storage, se ainda não existir.
+3. Rode `supabase/migrations/0002_map_bounds_buffer.sql` (campo `map_bounds_buffer_km`: buffer em km ao redor da área de estudo que limita a navegação do mapa; padrão 30).
+4. Crie o bucket público `client-data` em Storage, se ainda não existir.
 
 ## Cadastrar um novo cliente (via painel admin, sem código)
 
-1. Acesse `/admin/clientes/novo` e preencha nome, centro/zoom do mapa e cor.
+1. Acesse `/admin/clientes/novo` e preencha nome, centro/zoom do mapa e cor. O campo "Buffer da extensão máxima" (padrão 30 km) define até onde o usuário consegue navegar/dar zoom ao redor da área de estudo (AID): o portal calcula o bbox da camada indicada em "Layer key da área de estudo", soma o buffer e trava o mapa nessa extensão (`maxBounds` + zoom mínimo). O zoom inicial e o botão "Centralizar" usam essa mesma extensão.
 2. Em `/admin/clientes/<slug>/camadas`, crie os grupos temáticos (ex: "Empreendimento", "Recursos Hídricos").
 3. Em `/admin/clientes/<slug>/upload`, envie cada arquivo `.geojson`:
    - Se o arquivo estiver em SIRGAS 2000 / UTM 22S (EPSG:31982), marque "Reprojetar".

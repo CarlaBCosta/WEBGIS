@@ -17,10 +17,12 @@ export interface ClientRow {
   map_center_lng: number;
   map_zoom: number;
   zoom_to_layer: string | null;
+  map_bounds_buffer_km: number;
   farm_code_fields: string[];
   logo_url: string | null;
   primary_color: string | null;
   is_active: boolean;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -45,9 +47,20 @@ export interface LayerRow {
   storage_path: string | null;
   geometry_type: string | null;
   feature_count: number | null;
+  source: string | null;
   updated_at: string;
 }
 
 export interface LayerGroupWithLayersRow extends LayerGroupRow {
   layers: LayerRow[];
+}
+
+// Taxonomia padrão de grupos temáticos (migration 0003): usada pelo cadastro
+// para classificar camadas automaticamente pelo nome do arquivo.
+export interface LayerGroupTemplateRow {
+  id: string;
+  title: string;
+  objective: string;
+  sort_order: number;
+  keywords: string[];
 }

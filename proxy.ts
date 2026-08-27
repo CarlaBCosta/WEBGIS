@@ -7,7 +7,7 @@ const COOKIE_NAME = 'admin_session';
 // single shared-secret cookie check. Isolating every admin mutation behind
 // this one choke point means swapping in Supabase Auth + RLS roles later
 // only touches this file and the login route, not every API handler.
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isAdminLogin = pathname === '/admin/login' || pathname === '/api/admin/login';

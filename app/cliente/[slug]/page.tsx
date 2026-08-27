@@ -18,6 +18,9 @@ export default async function ClientePage({ params }: { params: Promise<{ slug: 
             <p>{config.clientName}</p>
           </div>
         </div>
+        {config.logoUrl && (
+          <img className="client-logo" src={config.logoUrl} alt={`Logo ${config.clientName}`} />
+        )}
       </header>
       <MapPortal config={config} />
     </div>

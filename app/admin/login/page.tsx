@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -16,7 +17,7 @@ export default function AdminLoginPage() {
     const res = await fetch('/api/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, userName }),
     });
     setLoading(false);
     if (res.ok) {
@@ -32,6 +33,15 @@ export default function AdminLoginPage() {
       <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-xl border border-white/10 bg-zinc-900 p-8">
         <h1 className="mb-1 text-lg font-semibold text-white">Painel Administrativo</h1>
         <p className="mb-6 text-sm text-zinc-400">AMBIUM Digital - Portal WebGIS</p>
+        <input
+          type="text"
+          placeholder="Seu nome (aparece em 'criado por')"
+          value={userName}
+          onChange={(e) => setUserName(e.target.value)}
+          required
+          autoFocus
+          className="mb-3 w-full rounded-md border border-white/10 bg-zinc-800 px-3 py-2 text-sm text-white outline-none focus:border-lime-500"
+        />
         <input
           type="password"
           placeholder="Senha de acesso"

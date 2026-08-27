@@ -12,6 +12,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (body.mapCenterLng !== undefined) update.map_center_lng = body.mapCenterLng;
   if (body.mapZoom !== undefined) update.map_zoom = body.mapZoom;
   if (body.zoomToLayer !== undefined) update.zoom_to_layer = body.zoomToLayer;
+  if (body.maxBoundsBufferKm !== undefined) update.map_bounds_buffer_km = body.maxBoundsBufferKm;
   if (body.farmCodeFields !== undefined) update.farm_code_fields = body.farmCodeFields;
   if (body.primaryColor !== undefined) update.primary_color = body.primaryColor;
   if (body.logoUrl !== undefined) update.logo_url = body.logoUrl;

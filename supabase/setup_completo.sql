@@ -65,6 +65,11 @@ alter table layers add column if not exists geometry_type text;
 alter table layers add column if not exists feature_count integer;
 alter table layers add column if not exists updated_at timestamptz not null default now();
 
+-- Extensão máxima de navegação do mapa: bbox da camada de área de estudo
+-- (zoom_to_layer, normalmente a AID) + buffer em km, configurável por
+-- cliente (padrão 30 km).
+alter table clients add column if not exists map_bounds_buffer_km numeric not null default 30;
+
 -- Leitura pública só deve expor clientes ativos; clientes desativados pelo
 -- admin devem retornar 404 no portal (/cliente/[slug] chama notFound()).
 drop policy if exists "Public read clients" on clients;
@@ -160,3 +165,82 @@ on conflict (client_id, layer_key) do update set
     style = excluded.style,
     default_active = excluded.default_active,
     sort_order = excluded.sort_order;
+
+-- Taxonomia padrÃ£o de grupos temÃ¡ticos (7 grupos) + fonte por camada.
+--
+-- Os grupos ficam no banco (nÃ£o no cÃ³digo): o cadastro de clientes usa esta
+-- tabela para classificar automaticamente cada GeoJSON enviado no grupo
+-- certo, via palavras-chave. Novos temas/palavras podem ser adicionados por
+-- SQL ou, futuramente, pelo painel admin. Cada cliente recebe apenas os
+-- grupos em que de fato tiver camadas.
+--
+-- ConvenÃ§Ã£o de arquivo: NOMEDACAMADA_FONTE.geojson (ex: Hidrografia_ANA
+-- .geojson) â€” o Ãºltimo segmento vira a fonte, salva em layers.source.
+--
+-- Rode no SQL Editor do Supabase depois de 0002_map_bounds_buffer.sql.
+
+create table if not exists layer_group_templates (
+    id uuid primary key default gen_random_uuid(),
+    title text unique not null,
+    objective text not null default '',
+    sort_order integer not null default 0,
+    keywords jsonb not null default '[]'
+);
+
+alter table layer_group_templates enable row level security;
+drop policy if exists "Public read layer_group_templates" on layer_group_templates;
+create policy "Public read layer_group_templates" on layer_group_templates for select using (true);
+
+alter table layers add column if not exists source text;
+
+insert into layer_group_templates (title, objective, sort_order, keywords) values
+(
+  'Empreendimento',
+  'DelimitaÃ§Ã£o da Ã¡rea de estudo',
+  1,
+  '["usina","ada","aid","fazenda","fazendas","talhao","talhoes","municipio","municipios","estado","estados","area_de_estudo","buffer","area_industrial","viveiro","viveiros","estrada","estradas","monitoramento","influencia","diretamente_afetada","empreendimento"]'
+),
+(
+  'Infraestrutura',
+  'Infraestrutura existente e empreendimentos associados',
+  2,
+  '["rodovia","rodovias","ferrovia","ferrovias","linha_de_transmissao","linhas_de_transmissao","transmissao","gasoduto","gasodutos","oleoduto","oleodutos","barragem","barragens","aeroporto","aeroportos","porto","portos","subestacao","subestacoes","mineroduto","minerodutos","hidrovia","hidrovias","usinas_vizinhas","usina_vizinha","pch","pchs","licenciado","licenciados","torre","torres","telecomunicacao"]'
+),
+(
+  'Base CartogrÃ¡fica',
+  'Dados fÃ­sicos e cartogrÃ¡ficos de referÃªncia',
+  3,
+  '["hidrografia","corpos_dagua","corpo_dagua","sub_bacia","sub_bacias","subbacia","subbacias","ugrhi","ugrhis","pedologia","geologia","declividade","mdt","modelo_digital","terreno","hipsometria","mapbiomas","uso_e_cobertura","uso_da_terra","solo","solos","bacia","bacias","clima","isoieta","isoietas"]'
+),
+(
+  'AnÃ¡lise FundiÃ¡ria',
+  'RegularizaÃ§Ã£o fundiÃ¡ria e restriÃ§Ãµes legais',
+  4,
+  '["car","sicar","assentamento","assentamentos","embargo","embargos","auto_de_infracao","autos_de_infracao","infracao","sigef","incra","imovel_rural","imoveis_rurais","terra_publica","terras_publicas","gleba","glebas","fundiario","fundiaria","fundiarios","cadastro_ambiental"]'
+),
+(
+  'Biodiversidade e Ecossistemas (AVC 1, 2 e 3)',
+  'AvaliaÃ§Ã£o da biodiversidade, habitats e ecossistemas',
+  5,
+  '["app","preservacao_permanente","reserva_legal","vegetacao","unidade_de_conservacao","unidades_de_conservacao","conservacao","uc","ramsar","birdlife","iba","turfeira","turfeiras","prioritaria","prioritarias","especie","especies","ameacada","ameacadas","corredor","corredores","fragmento","fragmentos","rppn","amortecimento","nucleo","biodiversidade","endemica","endemicas","habitat","caverna","cavernas","remanescente","remanescentes"]'
+),
+(
+  'ServiÃ§os EcossistÃªmicos (AVC 4)',
+  'AvaliaÃ§Ã£o dos serviÃ§os ambientais e recursos naturais',
+  6,
+  '["nascente","nascentes","aquifero","aquiferos","area_umida","areas_umidas","umida","umidas","outorga","outorgas","erodibilidade","erosao","recarga","vulnerabilidade","app_hidrica","hidrica","qualidade_da_agua","poco","pocos","vazao","vazoes","inundavel","inundaveis","suscetibilidade"]'
+),
+(
+  'Comunidades e PatrimÃ´nio Cultural (AVC 5 e 6)',
+  'Aspectos sociais, culturais e patrimÃ´nio',
+  7,
+  '["terra_indigena","terras_indigenas","indigena","indigenas","quilombola","quilombolas","tradicional","tradicionais","patrimonio","sitio_arqueologico","sitios_arqueologicos","arqueologico","arqueologicos","tombado","tombados","pesqueiro","pesqueiros","ribeirinha","ribeirinhas","povos","imaterial","escola","escolas","saude","uso_comunitario","comunitario","comunidade","comunidades"]'
+)
+on conflict (title) do update set
+  objective = excluded.objective,
+  sort_order = excluded.sort_order,
+  keywords = excluded.keywords;
+
+
+-- Auditoria simples de autoria (quem criou cada cliente, via login do admin)
+alter table clients add column if not exists created_by text;

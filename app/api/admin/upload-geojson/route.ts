@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
   const legendStyle = (form.get('legendStyle') as string | null) || '';
   const styleRaw = form.get('style') as string | null;
   const defaultActive = form.get('defaultActive') === 'true';
+  const source = (form.get('source') as string | null) || null;
   const sourceCrs = (form.get('sourceCrs') as string | null) === 'EPSG:31982' ? 'EPSG:31982' : 'EPSG:4326';
   const toleranceMeters = Number(form.get('toleranceMeters') ?? 5);
 
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
         storage_path: storagePath,
         geometry_type: detectGeometryType(collection),
         feature_count: keptCount,
+        source,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'client_id,layer_key' }

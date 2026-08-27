@@ -24,6 +24,9 @@ export interface ClientConfig {
   mapCenter: [number, number];
   mapZoom: number;
   zoomToLayerOnLoad: string | null;
+  // Buffer (km) ao redor do bbox da área de estudo que define a extensão
+  // máxima de navegação do mapa (maxBounds). Padrão 30 km.
+  maxBoundsBufferKm: number;
   farmCodeFields: string[];
   primaryColor: string | null;
   logoUrl: string | null;

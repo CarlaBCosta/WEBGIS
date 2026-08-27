@@ -10,11 +10,13 @@ import { useLayerVisibility } from '@/hooks/useLayerVisibility';
 import { useFarmFilter } from '@/hooks/useFarmFilter';
 import { useFeatureInfo } from '@/hooks/useFeatureInfo';
 import { useMeasurementTool } from '@/hooks/useMeasurementTool';
+import { useToasts } from '@/hooks/useToasts';
 import { LayerPanel } from './LayerPanel';
 import { FarmFilterBar } from './FarmFilterBar';
 import { ToolsPanel } from './ToolsPanel';
 import { InfoPanel } from './InfoPanel';
 import { SatelliteTimeline } from './SatelliteTimeline';
+import { Toast } from './Toast';
 
 export function MapPortal({ config }: { config: ClientConfig }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -29,17 +31,30 @@ export function MapPortal({ config }: { config: ClientConfig }) {
     [featureInfo.select]
   );
 
-  const { status, visible, activeLayers, toggleLayer, loadDefaultLayers, zoomToLayer } = useLayerVisibility(
-    map,
-    config,
-    loadLayer,
-    onFeatureClick
+  const { toasts, push: pushToast } = useToasts();
+  const onLayerLoadError = useCallback(
+    (layerLabel: string) => pushToast(`Falha ao carregar a camada "${layerLabel}". Tente novamente.`),
+    [pushToast]
   );
+
+  const {
+    status,
+    visible,
+    activeLayers,
+    toggleLayer,
+    loadDefaultLayers,
+    zoomToLayer,
+    applyStudyAreaExtent,
+    zoomToStudyArea,
+  } = useLayerVisibility(map, config, loadLayer, onFeatureClick, onLayerLoadError);
 
   const farmFilter = useFarmFilter(map, activeLayers, config.farmCodeFields);
   const measurement = useMeasurementTool(map);
 
-  // Load default-active layers once the map exists, then zoom to study area
+  // Load default-active layers once the map exists, then lock navigation to
+  // the study-area extent (AID bbox + configurable buffer) and frame it. If
+  // the study-area layer isn't available, fall back to a plain zoom-to-layer
+  // without locking bounds.
   const defaultKeys = config.layerGroups.flatMap((g) =>
     g.layers.filter((l) => l.defaultActive).map((l) => l.id)
   );
@@ -47,7 +62,11 @@ export function MapPortal({ config }: { config: ClientConfig }) {
   useEffect(() => {
     if (!map || loadedDefaultsRef.current) return;
     loadedDefaultsRef.current = true;
-    loadDefaultLayers(defaultKeys).then(() => zoomToLayer(config.zoomToLayerOnLoad));
+    loadDefaultLayers(defaultKeys).then(() => {
+      if (!applyStudyAreaExtent(config.zoomToLayerOnLoad, config.maxBoundsBufferKm)) {
+        zoomToLayer(config.zoomToLayerOnLoad);
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
@@ -92,7 +111,9 @@ export function MapPortal({ config }: { config: ClientConfig }) {
         mode={measurement.mode}
         onToggleMeasure={measurement.toggle}
         onClearMeasure={measurement.clear}
-        onFitBounds={() => zoomToLayer(config.zoomToLayerOnLoad)}
+        onFitBounds={() => {
+          if (!zoomToStudyArea()) zoomToLayer(config.zoomToLayerOnLoad);
+        }}
       />
 
       <InfoPanel selected={featureInfo.selected} onClose={featureInfo.close} />
@@ -102,6 +123,8 @@ export function MapPortal({ config }: { config: ClientConfig }) {
         activeYear={satellite.activeYear}
         onChange={satellite.setYear}
       />
+
+      <Toast toasts={toasts} />
     </div>
   );
 }

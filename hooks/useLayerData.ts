@@ -6,6 +6,12 @@ export type FeatureCollectionData = {
   features: Array<{ type: 'Feature'; properties: Record<string, unknown>; geometry: unknown }>;
 };
 
+// Thrown when the Storage object genuinely doesn't exist (bucket/file not
+// found) - this is a permanent "no data for this layer" state, not a
+// transient failure worth retrying. Anything else (5xx, network error,
+// malformed JSON) is treated as transient by the caller.
+export class LayerNotFoundError extends Error {}
+
 // Ports loadedLayerData/layerLoadPromises from shared/app.js: lazy-fetch a
 // layer's GeoJSON from the public Storage bucket on first activation, then
 // serve from an in-memory cache for every subsequent toggle.
@@ -24,6 +30,9 @@ export function useLayerData(config: ClientConfig) {
 
     const promise = fetch(url)
       .then((res) => {
+        if (res.status === 400 || res.status === 404) {
+          throw new LayerNotFoundError(`Sem dados para ${layerKey}`);
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<FeatureCollectionData>;
       })

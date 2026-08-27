@@ -33,6 +33,7 @@ export async function loadClientConfig(slug: string): Promise<ClientConfig | nul
     mapCenter: [client.map_center_lat, client.map_center_lng],
     mapZoom: client.map_zoom,
     zoomToLayerOnLoad: client.zoom_to_layer,
+    maxBoundsBufferKm: client.map_bounds_buffer_km ?? 30,
     farmCodeFields: client.farm_code_fields,
     primaryColor: client.primary_color,
     logoUrl: client.logo_url,

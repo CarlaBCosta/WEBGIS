@@ -2,6 +2,22 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 
+// Lista os grupos de um cliente (usado pelo cadastro para retomar um envio
+// interrompido sem duplicar o grupo padrão).
+export async function GET(request: NextRequest) {
+  const clientId = request.nextUrl.searchParams.get('clientId');
+  if (!clientId) return NextResponse.json({ error: 'clientId obrigatório.' }, { status: 400 });
+
+  const { data, error } = await supabaseAdmin
+    .from('layer_groups')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('sort_order', { ascending: true });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ groups: data });
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { data: existing } = await supabaseAdmin
