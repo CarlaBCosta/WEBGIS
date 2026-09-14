@@ -19,8 +19,11 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import socket
+import subprocess
 import sys
 import tempfile
 import time
@@ -52,6 +55,11 @@ TENTATIVAS_POR_FAZENDA = 3
 ESPERAS_S = [15, 60]  # entre tentativas — falhas passageiras do Google (ex.: HTTP 503)
 # Porta local usada só como trava: impede dois robôs na mesma máquina.
 PORTA_TRAVA = 47311
+
+# Plano gratuito do Supabase: 1 GB de arquivos no total. As camadas GeoJSON dos
+# clientes também ocupam esse espaço, então os vídeos ficam limitados a 800 MB.
+# No Supabase Pro (100 GB), rode com --limite-publicacao-mb maior.
+LIMITE_PUBLICACAO_MB = 800
 
 MESES = (5, 9)
 DIMENSAO = 768
@@ -127,6 +135,39 @@ class Supabase:
         return self._req("POST", f"{tabela}?on_conflict={conflito}", corpo,
                          "resolution=merge-duplicates")
 
+    def get_todos(self, caminho: str, pagina: int = 1000) -> list:
+        """GET paginado (a API devolve no máximo 1000 linhas por vez)."""
+        linhas: list = []
+        while True:
+            sep = "&" if "?" in caminho else "?"
+            lote = self.get(f"{caminho}{sep}limit={pagina}&offset={len(linhas)}") or []
+            linhas.extend(lote)
+            if len(lote) < pagina:
+                return linhas
+
+    # Storage ---------------------------------------------------------------
+
+    def _storage(self, metodo: str, caminho: str, dados: bytes | None, cabecalhos: dict):
+        req = urllib.request.Request(f"{self.url}/storage/v1/{caminho}", data=dados, method=metodo,
+                                     headers={"apikey": self.chave,
+                                              "Authorization": f"Bearer {self.chave}", **cabecalhos})
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as exc:
+            detalhe = exc.read().decode("utf-8", "replace")[:300]
+            raise RuntimeError(f"Storage {metodo} {caminho}: HTTP {exc.code} {detalhe}")
+
+    def storage_enviar(self, bucket: str, caminho: str, dados: bytes, content_type: str,
+                       max_age_s: int) -> None:
+        self._storage("POST", f"object/{bucket}/{urllib.parse.quote(caminho, safe='/')}", dados, {
+            "Content-Type": content_type, "x-upsert": "true", "cache-control": f"max-age={max_age_s}",
+        })
+
+    def storage_apagar(self, bucket: str, caminhos: list[str]) -> None:
+        self._storage("DELETE", f"object/{bucket}", json.dumps({"prefixes": caminhos}).encode("utf-8"),
+                      {"Content-Type": "application/json"})
+
 
 def q(valor: str) -> str:
     return urllib.parse.quote(str(valor), safe="")
@@ -136,11 +177,86 @@ def q(valor: str) -> str:
 # Fila
 # ---------------------------------------------------------------------------
 
+class Publicador:
+    """Publica a versão web de cada vídeo no bucket público do Supabase Storage.
+
+    O MP4 gerado (768 px) é convertido para uma versão leve (512 px, CRF 28, 8 fps)
+    antes do envio: no teste em 14/09/2026 a fazenda 600081 caiu de 2,9 MB para
+    667 KB sem diferença visível — a imagem Landsat de 30 m já é pouco nítida.
+    Isso faz as 613 fazendas caberem no 1 GB do plano gratuito. No plano Pro, basta
+    publicar em qualidade maior (WEB_LARGURA/WEB_CRF).
+
+    Nunca ultrapassa `limite_bytes` somando o que já está publicado (todas as
+    fazendas de todos os clientes): acima disso, registra aviso e não envia.
+    """
+
+    BUCKET = "timelapses"
+    WEB_LARGURA = 512
+    WEB_CRF = 28
+    WEB_FPS = 8
+    CACHE_S = 86400
+
+    def __init__(self, sb: Supabase, url_publica: str, limite_bytes: int):
+        import imageio_ffmpeg
+        self.sb = sb
+        self.ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        self.prefixo_url = f"{url_publica.rstrip('/')}/storage/v1/object/public/{self.BUCKET}/"
+        self.limite_bytes = limite_bytes
+        self.usado_bytes = 0
+
+    def atualizar_uso(self) -> None:
+        linhas = self.sb.get_todos("timelapse_videos?url=not.is.null&select=tamanho_bytes")
+        self.usado_bytes = sum(l.get("tamanho_bytes") or 0 for l in linhas)
+
+    def versao_web(self, origem: Path, destino: Path) -> None:
+        comando = [
+            self.ffmpeg, "-y", "-loglevel", "error", "-i", str(origem),
+            "-vf", f"scale={self.WEB_LARGURA}:-2", "-r", str(self.WEB_FPS),
+            "-c:v", "libx264", "-crf", str(self.WEB_CRF), "-preset", "slow",
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(destino),
+        ]
+        resultado = subprocess.run(comando, capture_output=True, text=True)
+        if resultado.returncode != 0:
+            raise RuntimeError(f"ffmpeg falhou: {resultado.stderr.strip()[:300]}")
+
+    def publicar(self, slug: str, codigo: str, sensor: str, mp4: Path,
+                 anterior: dict | None) -> tuple[str, int] | None:
+        """Envia a versão web e devolve (url, tamanho); None se estourar o limite."""
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp) / "web.mp4"
+            self.versao_web(mp4, web)
+            dados = web.read_bytes()
+
+        tamanho_anterior = (anterior or {}).get("tamanho_bytes") or 0
+        if self.usado_bytes - tamanho_anterior + len(dados) > self.limite_bytes:
+            return None
+
+        # Nome: <sensor>-<ano inicial>-<ano final>-<hash>.mp4. Os anos vêm do nome do
+        # MP4 local (timelapse_<codigo>_<sensor>_<inicio>-<fim>.mp4) e o portal os lê
+        # da URL; o hash deixa o link não adivinhável e troca a URL quando o vídeo é
+        # refeito (sem cache antigo).
+        anos = re.search(r"_(\d{4})-(\d{4})\.mp4$", mp4.name)
+        trecho_anos = f"{anos.group(1)}-{anos.group(2)}-" if anos else ""
+        caminho = f"{tf.nome_seguro(slug)}/{tf.nome_seguro(codigo)}/{sensor}-{trecho_anos}" \
+                  f"{hashlib.sha256(dados).hexdigest()[:12]}.mp4"
+        self.sb.storage_enviar(self.BUCKET, caminho, dados, "video/mp4", self.CACHE_S)
+
+        url_anterior = (anterior or {}).get("url") or ""
+        if url_anterior.startswith(self.prefixo_url):
+            caminho_anterior = urllib.parse.unquote(url_anterior[len(self.prefixo_url):])
+            if caminho_anterior != caminho:
+                self.sb.storage_apagar(self.BUCKET, [caminho_anterior])
+
+        self.usado_bytes += len(dados) - tamanho_anterior
+        return self.prefixo_url + urllib.parse.quote(caminho, safe="/"), len(dados)
+
+
 class Robo:
-    def __init__(self, sb: Supabase, url_publica: str, saida: Path):
+    def __init__(self, sb: Supabase, url_publica: str, saida: Path, publicador: Publicador):
         self.sb = sb
         self.url_publica = url_publica.rstrip("/")
         self.saida = saida
+        self.publicador = publicador
 
     def sinalizar(self) -> None:
         self.sb.patch("timelapse_robo?id=eq.1", {
@@ -223,6 +339,17 @@ class Robo:
             margem_m=MARGEM_M, sobrescrever=False, somente_mp4=True,
         )
 
+        # Vídeos já publicados deste cliente/sensor (uma consulta só): fazenda pulada
+        # que já tem URL não é reenviada.
+        existentes = {
+            v["codigo"]: v for v in self.sb.get_todos(
+                f"timelapse_videos?client_id=eq.{job['client_id']}&sensor=eq.{job['sensor']}"
+                f"&select=codigo,url,tamanho_bytes")
+        }
+        self.publicador.atualizar_uso()
+        log(f"Armazenamento de vídeos em uso: {self.publicador.usado_bytes / 1048576:.0f} MB "
+            f"de {self.publicador.limite_bytes / 1048576:.0f} MB permitidos.")
+
         concluidas = falhas = 0
         ultima_verificacao = 0.0
         for i, codigo in enumerate(codigos, 1):
@@ -241,7 +368,7 @@ class Robo:
                 concluidas += 1
             else:
                 falhas += 1
-            self.registrar_video(job, codigo, relatorio, sucesso)
+            self.registrar_video(job, slug, codigo, relatorio, sucesso, existentes.get(codigo))
             self.sb.patch(f"timelapse_jobs?id=eq.{job_id}", {
                 "concluidas": concluidas, "falhas": falhas, "heartbeat_at": iso(agora()),
             })
@@ -270,10 +397,12 @@ class Robo:
         return {"codigo": codigo, "status": f"erro: {ultimo_erro}", "anos": "",
                 "cenas_por_ano": "", "avisos": [], "gif": "", "mp4": ""}
 
-    def registrar_video(self, job: dict, codigo: str, relatorio: dict, sucesso: bool) -> None:
+    def registrar_video(self, job: dict, slug: str, codigo: str, relatorio: dict, sucesso: bool,
+                        anterior: dict | None) -> None:
         corpo = {
             "client_id": job["client_id"], "job_id": job["id"], "codigo": codigo,
-            "sensor": job["sensor"], "status": "ok" if sucesso else "erro",
+            "sensor": job["sensor"], "layer_key": job["layer_key"],
+            "status": "ok" if sucesso else "erro",
             "arquivo_local": relatorio.get("mp4") if sucesso else None,
             "updated_at": iso(agora()),
         }
@@ -286,23 +415,26 @@ class Robo:
         avisos = list(relatorio.get("avisos") or [])
         if not sucesso:
             avisos.append(relatorio["status"])
+
+        # Publica se o vídeo foi gerado agora ou se ainda não tem URL.
+        gerado_agora = relatorio["status"] == "ok"
+        ja_publicado = bool((anterior or {}).get("url"))
+        mp4 = Path(relatorio["mp4"]) if relatorio.get("mp4") else None
+        if sucesso and mp4 and mp4.exists() and (gerado_agora or not ja_publicado):
+            try:
+                publicado = self.publicador.publicar(slug, codigo, job["sensor"], mp4, anterior)
+                if publicado:
+                    corpo["url"], corpo["tamanho_bytes"] = publicado
+                else:
+                    avisos.append("não publicado: limite de armazenamento atingido")
+                    log(f"  fazenda {codigo}: não publicada — limite de armazenamento atingido.")
+            except Exception as exc:  # falha de envio não invalida o vídeo gerado
+                avisos.append(f"não publicado: {exc}")
+                log(f"  fazenda {codigo}: falha ao publicar ({exc}); tenta de novo no próximo pedido.")
+
         if avisos:
             corpo["avisos"] = " | ".join(avisos)
-        if sucesso and relatorio.get("mp4"):
-            url = publicar(Path(relatorio["mp4"]))
-            if url:
-                corpo["url"] = url
         self.sb.upsert("timelapse_videos", corpo, "client_id,codigo,sensor")
-
-
-def publicar(arquivo: Path) -> str | None:
-    """Ponto de encaixe da publicação dos vídeos no portal.
-
-    O armazenamento definitivo ainda não foi escolhido (Google Cloud Storage,
-    Supabase Pro etc.). Quando for, só esta função muda: envia o arquivo e
-    devolve a URL pública, que fica gravada em timelapse_videos.url.
-    """
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +464,9 @@ def main() -> int:
     p.add_argument("--projeto", default=PROJETO_PADRAO, help="projeto Google Cloud do Earth Engine")
     p.add_argument("--intervalo", type=int, default=INTERVALO_S, help="segundos entre consultas à fila")
     p.add_argument("--uma-vez", action="store_true", dest="uma_vez", help="uma passada e sai")
+    p.add_argument("--limite-publicacao-mb", type=int, default=LIMITE_PUBLICACAO_MB,
+                   dest="limite_publicacao_mb",
+                   help="teto de espaço dos vídeos publicados, somando todos os clientes")
     args = p.parse_args()
 
     trava = travar_instancia_unica()
@@ -351,7 +486,8 @@ def main() -> int:
         log("ERRO: earthengine-api não instalado no Python do robô.")
         return 1
 
-    robo = Robo(sb, url_publica, args.saida)
+    publicador = Publicador(sb, url_publica, args.limite_publicacao_mb * 1048576)
+    robo = Robo(sb, url_publica, args.saida, publicador)
     args.saida.mkdir(parents=True, exist_ok=True)
     log(f"Robô de timelapse {VERSAO} iniciado em {socket.gethostname()} "
         f"(projeto {args.projeto}, saída {args.saida}).")

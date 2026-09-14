@@ -120,9 +120,18 @@ Unregister-ScheduledTask -TaskName "Robo Timelapse AMBIUM" # remover a tarefa
 
 Para desligar o robô em execução, feche a janela "Robo Timelapse AMBIUM".
 
-**Publicação no portal**: ainda não acontece — o armazenamento dos vídeos não foi
-escolhido. Quando for, basta implementar a função `publicar()` do robô, que grava a
-URL em `timelapse_videos.url`.
+**Publicação no portal**: depois de gerar, o robô converte cada vídeo para uma versão
+web (512 px, CRF 28, 8 fps — cerca de 400 KB, sem diferença visível) e envia ao bucket
+público **`timelapses`** do Supabase Storage, gravando o link em
+`timelapse_videos.url` (migration 0006). No portal, ao clicar numa fazenda da camada
+que gerou os vídeos, o painel mostra o botão **"▶ Ver timelapse (2007–2025)"**, que abre
+o vídeo em tela ampla.
+
+- Não reenvia vídeo já publicado; vídeo refeito ganha link novo e o antigo é apagado.
+- **Teto de espaço**: para de publicar ao somar 800 MB (plano gratuito do Supabase =
+  1 GB, dividido com as camadas). No Supabase Pro, inicie o robô com
+  `--limite-publicacao-mb 50000` e, se quiser qualidade maior, ajuste
+  `Publicador.WEB_LARGURA`/`WEB_CRF`.
 
 ## Como cada quadro é montado
 

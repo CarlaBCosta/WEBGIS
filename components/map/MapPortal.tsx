@@ -15,13 +15,12 @@ import { LayerPanel } from './LayerPanel';
 import { FarmFilterBar } from './FarmFilterBar';
 import { ToolsPanel } from './ToolsPanel';
 import { InfoPanel } from './InfoPanel';
-import { SatelliteTimeline } from './SatelliteTimeline';
 import { Toast } from './Toast';
 
 export function MapPortal({ config }: { config: ClientConfig }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const map = useMap(containerRef, config.mapCenter, config.mapZoom);
-  const satellite = useSatelliteLayers(map);
+  useSatelliteLayers(map);
   const { loadLayer } = useLayerData(config);
   const featureInfo = useFeatureInfo(map);
 
@@ -116,12 +115,11 @@ export function MapPortal({ config }: { config: ClientConfig }) {
         }}
       />
 
-      <InfoPanel selected={featureInfo.selected} onClose={featureInfo.close} />
-
-      <SatelliteTimeline
-        options={satellite.options}
-        activeYear={satellite.activeYear}
-        onChange={satellite.setYear}
+      <InfoPanel
+        selected={featureInfo.selected}
+        onClose={featureInfo.close}
+        clientId={config.clientId}
+        farmCodeFields={config.farmCodeFields}
       />
 
       <Toast toasts={toasts} />
