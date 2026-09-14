@@ -90,6 +90,40 @@ Referência medida: 15 a 21 s por fazenda com Landsat 2007–2025 (613 fazendas 
 | `--somente-mp4` | desligado | grava só o MP4, apagando o GIF intermediário |
 | `--limite` | — | no lote, processa só as N primeiras (para testes) |
 
+## Robô de timelapse (automático, pelo painel admin)
+
+Em vez de rodar o script à mão, o painel pede os vídeos e um robô gera em segundo plano:
+
+1. **Pedido**: no *Novo cliente*, a opção "Gerar timelapses das fazendas" (já marcada)
+   cria o pedido logo após o envio das camadas. Na página do cliente, o card
+   **Timelapses das fazendas** permite pedir de novo, acompanhar a barra de progresso,
+   ver se o robô está online e cancelar.
+2. **Fila**: o pedido fica na tabela `timelapse_jobs` do Supabase (migration 0005).
+3. **Robô** (`robo_timelapse.py`): a cada 30 s pega o pedido mais antigo, baixa a camada
+   de fazendas do Storage, gera um MP4 por fazenda em
+   `C:\timelapse_saida\<cliente>\<codigo>\` e registra cada resultado em
+   `timelapse_videos`. Fazendas com vídeo pronto são puladas.
+
+**Robustez**: tenta de novo até 3 vezes quando o Google falha de forma passageira
+(ex.: HTTP 503); se o computador desligar no meio, o pedido volta para a fila após
+3 min sem sinal e continua de onde parou; só um robô roda por máquina.
+
+**Liga sozinho**: a tarefa **"Robo Timelapse AMBIUM"** do Agendador de Tarefas do
+Windows abre o `INICIAR-ROBO-TIMELAPSE.bat` (pasta `8_WEBPORTAL`) 1 minuto após o
+logon, numa janela minimizada. Registro de atividade: `C:\timelapse_saida\robo.log`.
+
+```powershell
+Start-ScheduledTask -TaskName "Robo Timelapse AMBIUM"      # ligar agora
+Disable-ScheduledTask -TaskName "Robo Timelapse AMBIUM"    # parar de ligar no logon
+Unregister-ScheduledTask -TaskName "Robo Timelapse AMBIUM" # remover a tarefa
+```
+
+Para desligar o robô em execução, feche a janela "Robo Timelapse AMBIUM".
+
+**Publicação no portal**: ainda não acontece — o armazenamento dos vídeos não foi
+escolhido. Quando for, basta implementar a função `publicar()` do robô, que grava a
+URL em `timelapse_videos.url`.
+
 ## Como cada quadro é montado
 
 - **Landsat** (padrão): Landsat 5, 7, 8 e 9 — Collection 2, Level-2 (reflectância de

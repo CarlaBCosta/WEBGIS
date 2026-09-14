@@ -91,9 +91,15 @@ INSTRUCOES_AUTENTICACAO = """
 # Utilidades de console
 # ---------------------------------------------------------------------------
 
+class ErroTimelapse(Exception):
+    """Erro com mensagem já pronta para o usuário."""
+
+
 def falhar(mensagem: str) -> None:
-    print(f"\nERRO: {mensagem}\n", file=sys.stderr)
-    sys.exit(1)
+    # Lança em vez de encerrar o processo: o robô (robo_timelapse.py) reutiliza
+    # estas funções e não pode ser derrubado por uma fazenda com problema.
+    # No modo linha de comando, main() captura e sai com código 1.
+    raise ErroTimelapse(mensagem)
 
 
 def aviso(mensagem: str) -> None:
@@ -467,7 +473,14 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
         pass
+    try:
+        return _executar_linha_de_comando()
+    except ErroTimelapse as exc:
+        print(f"\nERRO: {exc}\n", file=sys.stderr)
+        return 1
 
+
+def _executar_linha_de_comando() -> int:
     cfg = criar_parser().parse_args()
     print(INSTRUCOES_AUTENTICACAO)
 

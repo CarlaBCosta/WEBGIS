@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import JSZip from 'jszip';
 import type { ClientRow, LayerGroupTemplateRow } from '@/lib/types/database';
+import { CAMPO_FAZENDA_PADRAO, sugerirCamadaFazendas } from '@/lib/timelapse';
 
 // Mesma regra de slug do servidor (app/api/admin/clients/route.ts), usada
 // aqui só para a prévia — o valor final é sempre o do servidor.
@@ -127,6 +128,9 @@ export function ClientForm({ initial }: ClientFormProps) {
   const [reading, setReading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [reproject, setReproject] = useState(false);
+  // Timelapses: pedido criado para o robô logo após o envio das camadas.
+  const [gerarTimelapses, setGerarTimelapses] = useState(true);
+  const [camadaFazendas, setCamadaFazendas] = useState('');
   const [maxBoundsBufferKm, setMaxBoundsBufferKm] = useState(initial?.map_bounds_buffer_km ?? 30);
 
   // Avançado (com padrões que atendem a maioria dos casos)
@@ -424,9 +428,34 @@ export function ClientForm({ initial }: ClientFormProps) {
       }
     }
 
+    // Pede os timelapses ao robô depois que todas as camadas subiram. Uma falha
+    // aqui não impede o cadastro: o pedido pode ser refeito na página do cliente.
+    const camadaEscolhida = camadaFazendasEfetiva();
+    if (!isEdit && gerarTimelapses && camadaEscolhida && clientId) {
+      const tRes = await fetch('/api/admin/timelapse-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId,
+          layerKey: camadaEscolhida,
+          campo: farmCodeFields.split(',').map((s) => s.trim()).filter(Boolean)[0] || CAMPO_FAZENDA_PADRAO,
+          sensor: 'landsat',
+        }),
+      });
+      if (!tRes.ok && tRes.status !== 409) {
+        console.warn('Pedido de timelapses não criado:', await tRes.text().catch(() => ''));
+      }
+    }
+
     setSaving(false);
     router.push(`/admin/clientes/${finalSlug}`);
     router.refresh();
+  }
+
+  // A escolha manual vale enquanto a camada continuar na lista; senão, sugestão pelo nome.
+  function camadaFazendasEfetiva(): string {
+    if (camadaFazendas && layers.some((l) => l.key === camadaFazendas)) return camadaFazendas;
+    return sugerirCamadaFazendas(layers.map((l) => l.key)) ?? '';
   }
 
   const aidSelected = layers.find((l) => l.isAid);
@@ -741,6 +770,39 @@ export function ClientForm({ initial }: ClientFormProps) {
                   />
                   Os arquivos estão em SIRGAS 2000 / UTM 22S (reprojetar para WGS84)
                 </label>
+                <div className="border-t border-white/10 pt-3">
+                  <label className="flex items-center gap-2 text-sm text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={gerarTimelapses}
+                      onChange={(e) => setGerarTimelapses(e.target.checked)}
+                      disabled={saving}
+                    />
+                    Gerar timelapses das fazendas (vídeo de satélite 2007 → hoje)
+                  </label>
+                  {gerarTimelapses && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 pl-6 text-xs text-zinc-400">
+                      <span>Camada das fazendas:</span>
+                      <select
+                        value={camadaFazendasEfetiva()}
+                        onChange={(e) => setCamadaFazendas(e.target.value)}
+                        disabled={saving}
+                        className="rounded-md border border-white/10 bg-zinc-950 px-2 py-1 text-xs text-zinc-300 focus:border-lime-400/60 focus:outline-none"
+                        aria-label="Camada com os polígonos das fazendas"
+                      >
+                        {!camadaFazendasEfetiva() && <option value="">escolha a camada</option>}
+                        {layers.map((l) => (
+                          <option key={l.key} value={l.key}>
+                            {l.label}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-zinc-600">
+                        o robô gera os vídeos em segundo plano; acompanhe na página do cliente
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

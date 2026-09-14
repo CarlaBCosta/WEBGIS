@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import type { ClientRow } from '@/lib/types/database';
 import { ClientForm } from '@/components/admin/ClientForm';
+import { TimelapseCard } from '@/components/admin/TimelapseCard';
 
 export default async function EditClientePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -13,6 +14,13 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
     .maybeSingle<ClientRow>();
 
   if (!client) notFound();
+
+  const { data: layers } = await supabaseAdmin
+    .from('layers')
+    .select('layer_key, label')
+    .eq('client_id', client.id)
+    .not('storage_path', 'is', null)
+    .order('label', { ascending: true });
 
   return (
     <div>
@@ -27,6 +35,11 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
           </Link>
         </div>
       </div>
+      <TimelapseCard
+        clientId={client.id}
+        layers={layers ?? []}
+        farmCodeFields={client.farm_code_fields ?? []}
+      />
       <ClientForm initial={client} />
     </div>
   );
