@@ -326,7 +326,11 @@ class Robo:
             try:
                 grupos = tf.carregar_geojson(arquivo, job["campo"])
             except tf.ErroTimelapse as exc:
-                return self.finalizar(job_id, "erro", str(exc))
+                # A mensagem do script cita a opção de linha de comando; no painel
+                # a correção é escolher outra camada ou outro campo.
+                mensagem = str(exc).replace(" Use --campo para escolher outro.",
+                                            " Escolha outra camada ou outro campo no painel.")
+                return self.finalizar(job_id, "erro", mensagem)
 
         codigos = sorted(grupos, key=lambda c: (len(c), c))
         self.sb.patch(f"timelapse_jobs?id=eq.{job_id}", {"total": len(codigos)})

@@ -5,6 +5,7 @@ import type { ClientRow } from '@/lib/types/database';
 import { ClientForm } from '@/components/admin/ClientForm';
 import { TimelapseCard } from '@/components/admin/TimelapseCard';
 import { carregarTiposProjeto } from '@/lib/tiposProjeto';
+import { sugerirFazendas } from '@/lib/timelapseServidor';
 
 export default async function EditClientePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -19,12 +20,13 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
   const [{ data: layers }, tiposProjeto] = await Promise.all([
     supabaseAdmin
       .from('layers')
-      .select('layer_key, label')
+      .select('layer_key, label, storage_path')
       .eq('client_id', client.id)
       .not('storage_path', 'is', null)
       .order('label', { ascending: true }),
     carregarTiposProjeto(),
   ]);
+  const sugestao = await sugerirFazendas(layers ?? [], client.farm_code_fields ?? []);
 
   return (
     <div>
@@ -41,10 +43,14 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
       </div>
       <TimelapseCard
         clientId={client.id}
-        layers={layers ?? []}
-        farmCodeFields={client.farm_code_fields ?? []}
+        layers={(layers ?? []).map(({ layer_key, label }) => ({ layer_key, label }))}
+        sugestao={sugestao}
       />
-      <ClientForm initial={client} tiposProjeto={tiposProjeto} camadasExistentes={layers ?? []} />
+      <ClientForm
+        initial={client}
+        tiposProjeto={tiposProjeto}
+        camadasExistentes={(layers ?? []).map(({ layer_key, label }) => ({ layer_key, label }))}
+      />
     </div>
   );
 }

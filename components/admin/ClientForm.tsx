@@ -5,7 +5,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import JSZip from 'jszip';
 import type { ClientRow, LayerGroupTemplateRow } from '@/lib/types/database';
-import { CAMPO_FAZENDA_PADRAO, sugerirCamadaFazendas } from '@/lib/timelapse';
+import {
+  CAMPO_FAZENDA_PADRAO,
+  camposDoInicioDoGeojson,
+  escolherCampoCodigo,
+  pareceCamadaDeFazendas,
+  sugerirCamadaFazendas,
+} from '@/lib/timelapse';
 
 // Mesma regra de slug do servidor (app/api/admin/clients/route.ts), usada
 // aqui só para a prévia — o valor final é sempre o do servidor.
@@ -98,6 +104,7 @@ interface PendingLayer {
   size: number;
   blob: Blob;
   source: string | null;
+  campos: string[]; // atributos da primeira feição (lidos do começo do arquivo)
   groupTitle: string;
   isAid: boolean;
   visible: boolean;
@@ -191,6 +198,7 @@ export function ClientForm({ initial, tiposProjeto, camadasExistentes = [] }: Cl
               size: blob.size,
               blob,
               source,
+              campos: camposDoInicioDoGeojson(await blob.slice(0, 65536).text()),
               groupTitle: classifyLayer(key, templates),
               isAid: false,
               visible: false,
@@ -206,6 +214,7 @@ export function ClientForm({ initial, tiposProjeto, camadasExistentes = [] }: Cl
             size: file.size,
             blob: file,
             source,
+            campos: camposDoInicioDoGeojson(await file.slice(0, 65536).text()),
             groupTitle: classifyLayer(key, templates),
             isAid: false,
             visible: false,
@@ -265,8 +274,29 @@ export function ClientForm({ initial, tiposProjeto, camadasExistentes = [] }: Cl
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
     setError('');
+
+    // Timelapses marcados: confere antes de criar qualquer coisa, para não
+    // pular o pedido em silêncio nem gerar um pedido fadado a falhar.
+    const temPendentes = layers.some((l) => l.status !== 'ok');
+    const camadaTimelapse = layers.find((l) => l.key === camadaFazendasEfetiva());
+    const campoTimelapse = camadaTimelapse
+      ? escolherCampoCodigo(camadaTimelapse.campos, camposDeFazendaDoCliente())
+      : null;
+    if (gerarTimelapses && temPendentes) {
+      if (!camadaTimelapse) {
+        setError('Escolha a camada das fazendas para os timelapses, ou desmarque "Gerar timelapses das fazendas".');
+        return;
+      }
+      if (camadaTimelapse.campos.length > 0 && !campoTimelapse) {
+        setError(
+          `A camada "${camadaTimelapse.label}" não tem campo de código de fazenda (${camposDeFazendaDoCliente().join(', ')}). ` +
+            `Campos dela: ${camadaTimelapse.campos.join(', ')}. Escolha outra camada ou desmarque os timelapses.`
+        );
+        return;
+      }
+    }
+    setSaving(true);
 
     const aidKey = layers.find((l) => l.isAid)?.key ?? zoomToLayer ?? '';
 
@@ -455,20 +485,25 @@ export function ClientForm({ initial, tiposProjeto, camadasExistentes = [] }: Cl
 
     // Pede os timelapses ao robô depois que todas as camadas subiram. Uma falha
     // aqui não impede o cadastro: o pedido pode ser refeito na página do cliente.
-    const camadaEscolhida = camadaFazendasEfetiva();
-    if (gerarTimelapses && pendingLayers.length > 0 && camadaEscolhida && clientId) {
+    if (gerarTimelapses && pendingLayers.length > 0 && camadaTimelapse && clientId) {
       const tRes = await fetch('/api/admin/timelapse-jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId,
-          layerKey: camadaEscolhida,
-          campo: farmCodeFields.split(',').map((s) => s.trim()).filter(Boolean)[0] || CAMPO_FAZENDA_PADRAO,
+          layerKey: camadaTimelapse.key,
+          campo: campoTimelapse ?? (camposDeFazendaDoCliente()[0] || CAMPO_FAZENDA_PADRAO),
           sensor: 'landsat',
         }),
       });
       if (!tRes.ok && tRes.status !== 409) {
-        console.warn('Pedido de timelapses não criado:', await tRes.text().catch(() => ''));
+        const tBody = await tRes.json().catch(() => ({}));
+        setError(
+          `Cliente e camadas salvos, mas os timelapses não foram pedidos: ${tBody.error || `HTTP ${tRes.status}`} ` +
+            'Peça pelo card "Timelapses das fazendas" na página do cliente.'
+        );
+        setSaving(false);
+        return;
       }
     }
 
@@ -477,10 +512,19 @@ export function ClientForm({ initial, tiposProjeto, camadasExistentes = [] }: Cl
     router.refresh();
   }
 
-  // A escolha manual vale enquanto a camada continuar na lista; senão, sugestão pelo nome.
+  // A escolha manual vale enquanto a camada continuar na lista; senão, sugestão
+  // pelo nome (ADA, fazenda, talhão) e, se nenhum nome indicar, pelos atributos.
   function camadaFazendasEfetiva(): string {
     if (camadaFazendas && layers.some((l) => l.key === camadaFazendas)) return camadaFazendas;
-    return sugerirCamadaFazendas(layers.map((l) => l.key)) ?? '';
+    return (
+      sugerirCamadaFazendas(layers.map((l) => l.key)) ??
+      layers.find((l) => pareceCamadaDeFazendas(l.campos))?.key ??
+      ''
+    );
+  }
+
+  function camposDeFazendaDoCliente(): string[] {
+    return farmCodeFields.split(',').map((s) => s.trim()).filter(Boolean);
   }
 
   const aidSelected = layers.find((l) => l.isAid);
@@ -899,9 +943,31 @@ export function ClientForm({ initial, tiposProjeto, camadasExistentes = [] }: Cl
                           </option>
                         ))}
                       </select>
-                      <span className="text-zinc-600">
-                        o robô gera os vídeos em segundo plano; acompanhe na página do cliente
-                      </span>
+                      {(() => {
+                        const camada = layers.find((l) => l.key === camadaFazendasEfetiva());
+                        if (!camada) {
+                          return (
+                            <span className="basis-full text-amber-400/90">
+                              Não identifiquei a camada das fazendas. Escolha a que tem os talhões/fazendas ou
+                              desmarque esta opção.
+                            </span>
+                          );
+                        }
+                        const campo = escolherCampoCodigo(camada.campos, camposDeFazendaDoCliente());
+                        if (camada.campos.length > 0 && !campo) {
+                          return (
+                            <span className="basis-full text-amber-400/90">
+                              Essa camada não tem código de fazenda. Campos dela: {camada.campos.join(', ')}.
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-zinc-600">
+                            {campo ? `código lido do campo ${campo} · ` : ''}o robô gera os vídeos em segundo plano;
+                            acompanhe na página do cliente
+                          </span>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

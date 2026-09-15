@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { TimelapseJobRow, TimelapseRoboRow, TimelapseJobStatus } from '@/lib/types/database';
-import { CAMPO_FAZENDA_PADRAO, ROBO_ONLINE_MS, sugerirCamadaFazendas } from '@/lib/timelapse';
+import { CAMPO_FAZENDA_PADRAO, ROBO_ONLINE_MS } from '@/lib/timelapse';
 
 interface TimelapseCardProps {
   clientId: string;
   layers: { layer_key: string; label: string }[];
-  farmCodeFields: string[];
+  // Camada e campo identificados pelo servidor (nome ou atributos do arquivo).
+  sugestao: { layerKey: string; campo: string } | null;
 }
 
 const ROTULO_STATUS: Record<TimelapseJobStatus, { texto: string; classe: string }> = {
@@ -22,11 +23,12 @@ const inputClass =
   'w-full rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 ' +
   'focus:border-lime-400/60 focus:outline-none disabled:opacity-50';
 
-export function TimelapseCard({ clientId, layers, farmCodeFields }: TimelapseCardProps) {
-  const [layerKey, setLayerKey] = useState(
-    sugerirCamadaFazendas(layers.map((l) => l.layer_key)) ?? layers[0]?.layer_key ?? ''
-  );
-  const [campo, setCampo] = useState(farmCodeFields[0] ?? CAMPO_FAZENDA_PADRAO);
+export function TimelapseCard({ clientId, layers, sugestao }: TimelapseCardProps) {
+  // Sem sugestão, nada vem pré-escolhido: escolher a camada errada gerava
+  // pedido com falha (ex.: a AID, que não tem código de fazenda).
+  const [layerKey, setLayerKey] = useState(sugestao?.layerKey ?? '');
+  const [campo, setCampo] = useState(sugestao?.campo ?? CAMPO_FAZENDA_PADRAO);
+  const [aviso, setAviso] = useState('');
   const [sensor, setSensor] = useState<'landsat' | 'sentinel2'>('landsat');
   const [job, setJob] = useState<TimelapseJobRow | null>(null);
   const [robo, setRobo] = useState<TimelapseRoboRow | null>(null);
@@ -43,10 +45,14 @@ export function TimelapseCard({ clientId, layers, farmCodeFields }: TimelapseCar
     setAgora(Date.now());
   }, [clientId]);
 
+  // Consulta o andamento ao abrir e a cada 5 s.
   useEffect(() => {
-    atualizar();
+    const primeira = setTimeout(atualizar, 0);
     const timer = setInterval(atualizar, 5000);
-    return () => clearInterval(timer);
+    return () => {
+      clearTimeout(primeira);
+      clearInterval(timer);
+    };
   }, [atualizar]);
 
   const emAndamento = job?.status === 'pendente' || job?.status === 'processando';
@@ -55,16 +61,21 @@ export function TimelapseCard({ clientId, layers, farmCodeFields }: TimelapseCar
   async function gerar() {
     setEnviando(true);
     setErro('');
+    setAviso('');
     const res = await fetch('/api/admin/timelapse-jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clientId, layerKey, campo, sensor }),
     });
     setEnviando(false);
+    const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
       setErro(body.error || 'Não foi possível criar o pedido.');
       return;
+    }
+    if (body.campoAjustado && body.job?.campo) {
+      setCampo(body.job.campo);
+      setAviso(`O campo "${campo}" não existe nessa camada; o código das fazendas será lido de "${body.job.campo}".`);
     }
     atualizar();
   }
@@ -105,10 +116,11 @@ export function TimelapseCard({ clientId, layers, farmCodeFields }: TimelapseCar
       {layers.length === 0 ? (
         <p className="text-sm text-zinc-400">Envie as camadas do cliente antes de gerar timelapses.</p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-end">
-          <label className="block">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
+          <label className="block min-w-0">
             <span className="mb-1 block text-xs text-zinc-500">Camada das fazendas</span>
             <select value={layerKey} onChange={(e) => setLayerKey(e.target.value)} disabled={emAndamento} className={inputClass}>
+              {!layerKey && <option value="">Escolha a camada com os talhões/fazendas</option>}
               {layers.map((l) => (
                 <option key={l.layer_key} value={l.layer_key}>
                   {l.label}
@@ -116,11 +128,11 @@ export function TimelapseCard({ clientId, layers, farmCodeFields }: TimelapseCar
               ))}
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1 block text-xs text-zinc-500">Campo do código</span>
             <input value={campo} onChange={(e) => setCampo(e.target.value)} disabled={emAndamento} className={`${inputClass} font-mono`} />
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1 block text-xs text-zinc-500">Satélite</span>
             <select
               value={sensor}
@@ -143,7 +155,14 @@ export function TimelapseCard({ clientId, layers, farmCodeFields }: TimelapseCar
         </div>
       )}
 
+      {layers.length > 0 && !sugestao && !job && (
+        <p className="mt-3 text-xs text-amber-400/90">
+          Não identifiquei a camada das fazendas pelos nomes nem pelos atributos. Escolha a camada que tem os
+          talhões/fazendas e o campo com o código deles.
+        </p>
+      )}
       {erro && <p className="mt-3 text-sm text-red-400">{erro}</p>}
+      {aviso && <p className="mt-3 text-sm text-sky-300">{aviso}</p>}
 
       {job && (
         <div className="mt-5 border-t border-white/10 pt-4">
