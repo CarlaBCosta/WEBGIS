@@ -17,6 +17,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (body.primaryColor !== undefined) update.primary_color = body.primaryColor;
   if (body.logoUrl !== undefined) update.logo_url = body.logoUrl;
   if (body.isActive !== undefined) update.is_active = body.isActive;
+  if (Array.isArray(body.projetos)) update.projetos = body.projetos;
 
   const { data, error } = await supabaseAdmin.from('clients').update(update).eq('id', id).select().single();
 

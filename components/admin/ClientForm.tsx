@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import JSZip from 'jszip';
 import type { ClientRow, LayerGroupTemplateRow } from '@/lib/types/database';
@@ -111,12 +112,17 @@ const inputClass =
 
 interface ClientFormProps {
   initial?: ClientRow;
+  // Tipos de projeto cadastrados no banco (migration 0008), na ordem de exibição.
+  tiposProjeto: string[];
+  // Camadas que o cliente já tem (edição): mesmo nome = substituição.
+  camadasExistentes?: { layer_key: string; label: string }[];
 }
 
-export function ClientForm({ initial }: ClientFormProps) {
+export function ClientForm({ initial, tiposProjeto, camadasExistentes = [] }: ClientFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [projetos, setProjetos] = useState<string[]>(initial?.projetos ?? []);
   const [name, setName] = useState(initial?.name ?? '');
   const [slug, setSlug] = useState(initial?.slug ?? '');
   const [slugTouched, setSlugTouched] = useState(!!initial);
@@ -128,8 +134,9 @@ export function ClientForm({ initial }: ClientFormProps) {
   const [reading, setReading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [reproject, setReproject] = useState(false);
-  // Timelapses: pedido criado para o robô logo após o envio das camadas.
-  const [gerarTimelapses, setGerarTimelapses] = useState(true);
+  // Timelapses: pedido criado para o robô logo após o envio das camadas. Na
+  // edição começa desmarcado (o card de timelapses da página cuida dos pedidos).
+  const [gerarTimelapses, setGerarTimelapses] = useState(!initial);
   const [camadaFazendas, setCamadaFazendas] = useState('');
   const [maxBoundsBufferKm, setMaxBoundsBufferKm] = useState(initial?.map_bounds_buffer_km ?? 30);
 
@@ -147,12 +154,11 @@ export function ClientForm({ initial }: ClientFormProps) {
   // para um grupo único "Camadas do Projeto", como antes.
   const [templates, setTemplates] = useState<LayerGroupTemplateRow[]>([]);
   useEffect(() => {
-    if (initial) return;
     fetch('/api/admin/group-templates')
       .then((r) => r.json())
       .then((b) => setTemplates(b.templates ?? []))
       .catch(() => {});
-  }, [initial]);
+  }, []);
 
   // Envio retomável: guarda o cliente já criado para que um novo clique
   // reenvie apenas as camadas que falharam, sem recriar nada.
@@ -275,6 +281,7 @@ export function ClientForm({ initial }: ClientFormProps) {
       farmCodeFields: farmCodeFields.split(',').map((s) => s.trim()).filter(Boolean),
       primaryColor,
       isActive,
+      projetos,
     };
 
     let clientId = created?.clientId ?? initial?.id ?? null;
@@ -358,10 +365,11 @@ export function ClientForm({ initial }: ClientFormProps) {
       }
     }
 
-    // Envia as camadas (apenas no cadastro; a edição usa a tela de upload)
+    // Envia as camadas: no cadastro e também na edição (novas camadas ou versões
+    // atualizadas — mesmo nome de arquivo substitui a camada existente).
     const pendingLayers = layers.filter((l) => l.status !== 'ok');
-    if (!isEdit && pendingLayers.length > 0 && clientId) {
-      // Cria divisões que não são do modelo (fallback sem migration 0003).
+    if (pendingLayers.length > 0 && clientId) {
+      // Cria as divisões que o cliente ainda não tem (ex.: excluída antes).
       const templateOrder = new Map(templates.map((t, i) => [t.title, i]));
       const neededTitles = [...new Set(pendingLayers.map((l) => l.groupTitle))].sort(
         (a, b) => (templateOrder.get(a) ?? 99) - (templateOrder.get(b) ?? 99)
@@ -376,18 +384,20 @@ export function ClientForm({ initial }: ClientFormProps) {
 
       for (const title of neededTitles) {
         if (groupIds[title]) continue;
+        const doModelo = templates.find((t) => t.title === title);
         const gRes = await fetch('/api/admin/layer-groups', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clientId, title }),
+          body: JSON.stringify(doModelo ? { clientId, templateId: doModelo.id } : { clientId, title }),
         });
-        if (!gRes.ok) {
-          const gBody = await gRes.json().catch(() => ({}));
-          setError(gBody.error || `Cliente criado, mas falhou ao criar o grupo "${title}".`);
+        const gBody = await gRes.json().catch(() => ({}));
+        const novo = gBody.group ?? gBody.groups?.[0];
+        if (!gRes.ok || !novo) {
+          setError(gBody.error || `Falhou ao criar a divisão "${title}".`);
           setSaving(false);
           return;
         }
-        groupIds[title] = (await gRes.json()).group.id;
+        groupIds[title] = novo.id;
       }
 
       let done = 0;
@@ -446,7 +456,7 @@ export function ClientForm({ initial }: ClientFormProps) {
     // Pede os timelapses ao robô depois que todas as camadas subiram. Uma falha
     // aqui não impede o cadastro: o pedido pode ser refeito na página do cliente.
     const camadaEscolhida = camadaFazendasEfetiva();
-    if (!isEdit && gerarTimelapses && camadaEscolhida && clientId) {
+    if (gerarTimelapses && pendingLayers.length > 0 && camadaEscolhida && clientId) {
       const tRes = await fetch('/api/admin/timelapse-jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -479,7 +489,7 @@ export function ClientForm({ initial }: ClientFormProps) {
   const pendingCount = layers.length - sentCount;
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-3xl space-y-10">
+    <form onSubmit={handleSubmit} className="max-w-4xl space-y-10">
       {/* Passo 1 — Nome */}
       <section className="flex gap-5">
         <StepMarker n={1} />
@@ -516,9 +526,53 @@ export function ClientForm({ initial }: ClientFormProps) {
         </div>
       </section>
 
-      {/* Passo 2 — Logo */}
+      {/* Passo 2 — Projeto */}
       <section className="flex gap-5">
         <StepMarker n={2} />
+        <div className="min-w-0 flex-1 space-y-3 pb-2">
+          <div>
+            <h2 className="text-base font-medium text-zinc-100">Projeto</h2>
+            <p className="mt-0.5 text-sm text-zinc-500">
+              Marque um ou mais — um cliente pode ter, por exemplo, Bonsucro e ISCC EU.
+            </p>
+          </div>
+          {tiposProjeto.length === 0 ? (
+            <p className="text-xs text-amber-400/90">
+              Nenhum tipo de projeto cadastrado. Rode a migration 0008 no Supabase.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Tipos de projeto">
+              {tiposProjeto.map((tipo) => {
+                const marcado = projetos.includes(tipo);
+                return (
+                  <button
+                    key={tipo}
+                    type="button"
+                    aria-pressed={marcado}
+                    onClick={() =>
+                      setProjetos((atual) =>
+                        marcado ? atual.filter((p) => p !== tipo) : [...atual, tipo]
+                      )
+                    }
+                    className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-lime-400/40 ${
+                      marcado
+                        ? 'border-lime-400/60 bg-lime-400/15 text-lime-200'
+                        : 'border-white/10 bg-zinc-900 text-zinc-400 hover:border-white/25 hover:text-zinc-200'
+                    }`}
+                  >
+                    {marcado ? '✓ ' : ''}
+                    {tipo}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Passo 3 — Logo */}
+      <section className="flex gap-5">
+        <StepMarker n={3} />
         <div className="min-w-0 flex-1 space-y-3 pb-2">
           <h2 className="text-base font-medium text-zinc-100">Logo do cliente</h2>
           <div className="flex flex-wrap items-center gap-4">
@@ -573,16 +627,27 @@ export function ClientForm({ initial }: ClientFormProps) {
         </div>
       </section>
 
-      {/* Passo 3 — Camadas */}
-      {!isEdit && (
+      {/* Passo 4 — Camadas (cadastro e edição) */}
         <section className="flex gap-5">
-          <StepMarker n={3} />
+          <StepMarker n={4} />
           <div className="min-w-0 flex-1 space-y-4 pb-2">
-            <div>
-              <h2 className="text-base font-medium text-zinc-100">Camadas do projeto</h2>
-              <p className="mt-0.5 text-sm text-zinc-500">
-                Envie um ZIP com os GeoJSON exportados do QGIS — ou os arquivos soltos.
-              </p>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-base font-medium text-zinc-100">Camadas do projeto</h2>
+                <p className="mt-0.5 text-sm text-zinc-500">
+                  {isEdit
+                    ? 'Envie camadas novas ou versões atualizadas. Arquivo com o mesmo nome substitui a camada existente.'
+                    : 'Envie um ZIP com os GeoJSON exportados do QGIS — ou os arquivos soltos.'}
+                </p>
+              </div>
+              {isEdit && initial && (
+                <Link
+                  href={`/admin/clientes/${initial.slug}/camadas`}
+                  className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 hover:border-white/25 hover:bg-white/5"
+                >
+                  Organizar as {camadasExistentes.length} camadas atuais →
+                </Link>
+              )}
             </div>
 
             <div
@@ -629,105 +694,127 @@ export function ClientForm({ initial }: ClientFormProps) {
             </div>
 
             {layers.length > 0 && (
-              <div className="overflow-hidden rounded-xl border border-white/10">
-                <div className="flex items-center justify-between border-b border-white/10 bg-zinc-900/60 px-4 py-2">
-                  <span className="text-[11px] uppercase tracking-wider text-zinc-500">
-                    {layers.length} camada{layers.length > 1 ? 's' : ''}
-                  </span>
-                  {(sentCount > 0 || failedCount > 0) && (
-                    <span className="text-[11px] text-zinc-500">
-                      <span className="text-emerald-400">{sentCount} enviada{sentCount === 1 ? '' : 's'}</span>
-                      {failedCount > 0 && (
-                        <>
-                          {' · '}
-                          <span className="text-red-400">{failedCount} com falha</span>
-                        </>
-                      )}
-                    </span>
-                  )}
+              <div className="overflow-hidden rounded-xl border border-white/10 bg-zinc-900/30">
+                {/* Resumo e explicação das colunas de escolha */}
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-white/10 px-4 py-3">
+                  <p className="text-sm font-medium text-zinc-200">
+                    {layers.length} camada{layers.length > 1 ? 's' : ''} para enviar
+                    {(sentCount > 0 || failedCount > 0) && (
+                      <span className="ml-2 text-xs font-normal">
+                        <span className="text-emerald-400">{sentCount} enviada{sentCount === 1 ? '' : 's'}</span>
+                        {failedCount > 0 && <span className="text-red-400"> · {failedCount} com falha</span>}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    <b className="font-medium text-zinc-400">Área de estudo:</b> a camada que enquadra e limita o mapa
+                    (só uma). <b className="font-medium text-zinc-400">Ligada ao abrir:</b> já aparece acesa no portal.
+                  </p>
                 </div>
-                <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto_auto] items-center gap-x-3 border-b border-white/10 bg-zinc-900/60 px-4 py-2 text-[11px] uppercase tracking-wider text-zinc-500">
-                  <span>Camada</span>
-                  <span className="w-44 text-center">Grupo</span>
-                  <span className="w-20 text-center">Status</span>
-                  <span className="w-20 text-center">Área de estudo</span>
-                  <span className="w-20 text-center">Visível ao abrir</span>
-                  <span />
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] table-fixed text-sm">
+                    <colgroup>
+                      <col />
+                      <col className="w-52" />
+                      <col className="w-28" />
+                      <col className="w-24" />
+                      <col className="w-24" />
+                      <col className="w-12" />
+                    </colgroup>
+                    <thead>
+                      <tr className="border-b border-white/10 bg-zinc-900/60 text-xs font-medium text-zinc-500">
+                        <th scope="col" className="px-4 py-2 text-left font-medium">Camada</th>
+                        <th scope="col" className="px-2 py-2 text-left font-medium">Divisão</th>
+                        <th scope="col" className="px-2 py-2 text-left font-medium">Envio</th>
+                        <th scope="col" className="px-2 py-2 text-center font-medium">Área de estudo</th>
+                        <th scope="col" className="px-2 py-2 text-center font-medium">Ligada ao abrir</th>
+                        <th scope="col" className="px-2 py-2">
+                          <span className="sr-only">Remover</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {layers.map((l) => {
+                        const substitui = camadasExistentes.some((c) => c.layer_key === l.key);
+                        return (
+                          <tr key={l.key} className="align-middle">
+                            <td className="px-4 py-2.5">
+                              <div className="flex min-w-0 items-center gap-1.5">
+                                <span className="truncate text-zinc-200" title={l.label}>
+                                  {l.label}
+                                </span>
+                                {l.source && (
+                                  <span className="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+                                    {l.source}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="truncate text-xs text-zinc-600" title={l.error}>
+                                {formatSize(l.size)}
+                                {substitui && <span className="text-amber-400/90"> · substitui a camada atual</span>}
+                                {l.status === 'erro' && l.error && <span className="text-red-400/80"> · {l.error}</span>}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2.5">
+                              <select
+                                value={l.groupTitle}
+                                onChange={(e) => setGroup(l.key, e.target.value)}
+                                disabled={saving || l.status === 'ok'}
+                                title={l.groupTitle}
+                                className="w-full truncate rounded-md border border-white/10 bg-zinc-950 px-1.5 py-1 text-xs text-zinc-300 focus:border-lime-400/60 focus:outline-none disabled:opacity-50"
+                                aria-label={`Divisão da camada ${l.label}`}
+                              >
+                                {(templates.length > 0 ? templates.map((t) => t.title) : ['Camadas do Projeto']).map(
+                                  (t) => (
+                                    <option key={t} value={t}>
+                                      {t}
+                                    </option>
+                                  )
+                                )}
+                              </select>
+                            </td>
+                            <td className="px-2 py-2.5">
+                              <StatusBadge status={l.status} />
+                            </td>
+                            <td className="px-2 py-2.5 text-center">
+                              <input
+                                type="radio"
+                                name="aid-layer"
+                                checked={l.isAid}
+                                onChange={() => setAid(l.key)}
+                                disabled={saving || l.status === 'ok'}
+                                aria-label={`Usar ${l.label} como área de estudo`}
+                                className="h-4 w-4 accent-lime-500"
+                              />
+                            </td>
+                            <td className="px-2 py-2.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={l.visible}
+                                onChange={() => toggleVisible(l.key)}
+                                disabled={saving || l.status === 'ok'}
+                                aria-label={`Deixar ${l.label} ligada ao abrir o portal`}
+                                className="h-4 w-4 accent-lime-500"
+                              />
+                            </td>
+                            <td className="px-2 py-2.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => removeLayer(l.key)}
+                                disabled={saving || l.status === 'ok'}
+                                className="rounded-md px-1.5 text-lg leading-none text-zinc-600 hover:bg-red-500/10 hover:text-red-400 disabled:invisible"
+                                aria-label={`Tirar ${l.label} da lista`}
+                                title="Tirar da lista"
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                <ul className="divide-y divide-white/5">
-                  {layers.map((l) => (
-                    <li
-                      key={l.key}
-                      className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto_auto] items-center gap-x-3 px-4 py-2.5"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm text-zinc-200">
-                          {l.label}
-                          {l.source && (
-                            <span className="ml-1.5 rounded bg-zinc-800 px-1.5 py-0.5 align-middle text-[10px] font-medium text-zinc-400">
-                              {l.source}
-                            </span>
-                          )}
-                        </span>
-                        <span className="block truncate text-xs text-zinc-600" title={l.error}>
-                          {formatSize(l.size)}
-                          {l.status === 'erro' && l.error && (
-                            <span className="text-red-400/80"> · {l.error}</span>
-                          )}
-                        </span>
-                      </span>
-                      <span className="flex w-44 justify-center">
-                        <select
-                          value={l.groupTitle}
-                          onChange={(e) => setGroup(l.key, e.target.value)}
-                          disabled={saving || l.status === 'ok'}
-                          className="w-full truncate rounded-md border border-white/10 bg-zinc-950 px-1.5 py-1 text-xs text-zinc-300 focus:border-lime-400/60 focus:outline-none disabled:opacity-50"
-                          aria-label={`Grupo da camada ${l.label}`}
-                        >
-                          {(templates.length > 0
-                            ? templates.map((t) => t.title)
-                            : ['Camadas do Projeto']
-                          ).map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
-                      </span>
-                      <span className="flex w-20 justify-center">
-                        <StatusBadge status={l.status} />
-                      </span>
-                      <span className="flex w-20 justify-center">
-                        <input
-                          type="radio"
-                          name="aid-layer"
-                          checked={l.isAid}
-                          onChange={() => setAid(l.key)}
-                          disabled={saving || l.status === 'ok'}
-                          aria-label={`Marcar ${l.label} como área de estudo`}
-                        />
-                      </span>
-                      <span className="flex w-20 justify-center">
-                        <input
-                          type="checkbox"
-                          checked={l.visible}
-                          onChange={() => toggleVisible(l.key)}
-                          disabled={saving || l.status === 'ok'}
-                          aria-label={`Exibir ${l.label} ao abrir o portal`}
-                        />
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeLayer(l.key)}
-                        disabled={saving || l.status === 'ok'}
-                        className="text-xs text-zinc-600 hover:text-red-400 disabled:invisible"
-                        aria-label={`Remover ${l.label}`}
-                      >
-                        remover
-                      </button>
-                    </li>
-                  ))}
-                </ul>
               </div>
             )}
 
@@ -822,7 +909,6 @@ export function ClientForm({ initial }: ClientFormProps) {
             )}
           </div>
         </section>
-      )}
 
       {/* Avançado */}
       <details className="ml-12 rounded-xl border border-white/10">
@@ -967,7 +1053,9 @@ export function ClientForm({ initial }: ClientFormProps) {
           {saving
             ? 'Enviando...'
             : isEdit
-              ? 'Salvar alterações'
+              ? pendingCount > 0
+                ? `Salvar e enviar ${pendingCount} camada${pendingCount > 1 ? 's' : ''}`
+                : 'Salvar alterações'
               : created && failedCount > 0
                 ? `Reenviar ${failedCount} camada${failedCount > 1 ? 's' : ''} com falha`
                 : layers.length > 0

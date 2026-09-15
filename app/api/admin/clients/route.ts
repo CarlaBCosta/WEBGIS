@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       primary_color: body.primaryColor || '#9ACD32',
       logo_url: body.logoUrl || null,
       is_active: true,
+      projetos: Array.isArray(body.projetos) ? body.projetos : [],
     })
     .select()
     .single();

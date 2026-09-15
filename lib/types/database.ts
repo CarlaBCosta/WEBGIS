@@ -22,6 +22,7 @@ export interface ClientRow {
   logo_url: string | null;
   primary_color: string | null;
   is_active: boolean;
+  projetos: string[]; // tipos de projeto (migration 0008)
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -55,6 +56,12 @@ export interface LayerRow {
 
 export interface LayerGroupWithLayersRow extends LayerGroupRow {
   layers: LayerRow[];
+}
+
+export interface TipoProjetoRow {
+  id: string;
+  nome: string;
+  sort_order: number;
 }
 
 // Fila do robô de timelapse (migration 0005).

@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import type { ClientRow } from '@/lib/types/database';
 import { ClientForm } from '@/components/admin/ClientForm';
 import { TimelapseCard } from '@/components/admin/TimelapseCard';
+import { carregarTiposProjeto } from '@/lib/tiposProjeto';
 
 export default async function EditClientePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -15,12 +16,15 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
 
   if (!client) notFound();
 
-  const { data: layers } = await supabaseAdmin
-    .from('layers')
-    .select('layer_key, label')
-    .eq('client_id', client.id)
-    .not('storage_path', 'is', null)
-    .order('label', { ascending: true });
+  const [{ data: layers }, tiposProjeto] = await Promise.all([
+    supabaseAdmin
+      .from('layers')
+      .select('layer_key, label')
+      .eq('client_id', client.id)
+      .not('storage_path', 'is', null)
+      .order('label', { ascending: true }),
+    carregarTiposProjeto(),
+  ]);
 
   return (
     <div>
@@ -40,7 +44,7 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
         layers={layers ?? []}
         farmCodeFields={client.farm_code_fields ?? []}
       />
-      <ClientForm initial={client} />
+      <ClientForm initial={client} tiposProjeto={tiposProjeto} camadasExistentes={layers ?? []} />
     </div>
   );
 }

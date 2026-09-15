@@ -14,12 +14,18 @@ export function ClientsTable({ clients }: { clients: ClientRow[] }) {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<'todos' | 'ativos' | 'inativos'>('todos');
   const [year, setYear] = useState<string>('todos');
+  const [projeto, setProjeto] = useState<string>('todos');
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Anos trabalhados = anos em que houve cadastro de cliente.
   const years = useMemo(
     () =>
       [...new Set(clients.map((c) => new Date(c.created_at).getFullYear()))].sort((a, b) => b - a),
+    [clients]
+  );
+
+  const projetosUsados = useMemo(
+    () => [...new Set(clients.flatMap((c) => c.projetos ?? []))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     [clients]
   );
 
@@ -31,16 +37,18 @@ export function ClientsTable({ clients }: { clients: ClientRow[] }) {
           term &&
           !c.name.toLowerCase().includes(term) &&
           !c.slug.toLowerCase().includes(term) &&
-          !(c.created_by ?? '').toLowerCase().includes(term)
+          !(c.created_by ?? '').toLowerCase().includes(term) &&
+          !(c.projetos ?? []).some((p) => p.toLowerCase().includes(term))
         ) {
           return false;
         }
         if (status === 'ativos' && !c.is_active) return false;
         if (status === 'inativos' && c.is_active) return false;
         if (year !== 'todos' && new Date(c.created_at).getFullYear() !== Number(year)) return false;
+        if (projeto !== 'todos' && !(c.projetos ?? []).includes(projeto)) return false;
         return true;
       }),
-    [clients, q, status, year]
+    [clients, q, status, year, projeto]
   );
 
   async function toggleStatus(client: ClientRow) {
@@ -74,6 +82,19 @@ export function ClientsTable({ clients }: { clients: ClientRow[] }) {
           <option value="todos">Todos os status</option>
           <option value="ativos">Somente ativos</option>
           <option value="inativos">Somente inativos</option>
+        </select>
+        <select
+          value={projeto}
+          onChange={(e) => setProjeto(e.target.value)}
+          className={selectClass}
+          aria-label="Filtrar por projeto"
+        >
+          <option value="todos">Todos os projetos</option>
+          {projetosUsados.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
         </select>
         <select
           value={year}
@@ -110,6 +131,15 @@ export function ClientsTable({ clients }: { clients: ClientRow[] }) {
                 <td className="px-5 py-3.5">
                   <div className="font-medium text-zinc-100">{c.name}</div>
                   <div className="mt-0.5 font-mono text-xs text-zinc-500">{c.slug}</div>
+                  {(c.projetos ?? []).length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {(c.projetos ?? []).map((p) => (
+                        <span key={p} className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </td>
                 <td className="px-5 py-3.5">
                   <button

@@ -19,10 +19,20 @@ npm run dev
 
 ## Banco de dados
 
-1. Rode `supabase/schema.sql` no SQL Editor do Supabase (base: tabelas `clients`, `layer_groups`, `layers`).
-2. Rode `supabase/migrations/0001_admin_panel_fields.sql` (campos usados pelo painel admin: `logo_url`, `primary_color`, `is_active`, `storage_path`, etc.).
-3. Rode `supabase/migrations/0002_map_bounds_buffer.sql` (campo `map_bounds_buffer_km`: buffer em km ao redor da área de estudo que limita a navegação do mapa; padrão 30).
-4. Crie o bucket público `client-data` em Storage, se ainda não existir.
+As mudanças de estrutura ficam em `supabase/migrations/` (numeradas) e são aplicadas pelo comando:
+
+```bash
+npm run migrar            # aplica as pendentes, em ordem, cada uma numa transação
+npm run migrar -- --ver   # só lista as pendentes
+```
+
+Requer `SUPABASE_DB_URL` no `.env.local`: a connection string do Supabase
+(**Connect → Direct → Session pooler**) com a senha do banco. A tabela `schema_migrations`
+registra o que já rodou (0001–0006 foram aplicadas à mão e ficaram registradas na primeira
+execução). Ao criar uma migration nova, basta adicionar o arquivo `00NN_nome.sql` e rodar o comando.
+
+Projeto novo do zero: rode `supabase/schema.sql` no SQL Editor, crie os buckets públicos
+`client-data` e `timelapses` em Storage e depois `npm run migrar`.
 
 ## Cadastrar um novo cliente (via painel admin, sem código)
 

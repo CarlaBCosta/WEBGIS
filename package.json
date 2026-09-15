@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "migrar": "node --env-file=.env.local scripts/migrar.mjs",
     "preprocess": "tsx scripts/preprocess.ts",
     "upload-cliente": "tsx scripts/upload-cliente.ts"
   },
@@ -34,6 +35,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "pg": "^8.23.0",
     "tailwindcss": "^4",
     "tsx": "^4.19.2",
     "typescript": "^5"
