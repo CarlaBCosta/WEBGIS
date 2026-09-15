@@ -37,7 +37,8 @@ export async function loadClientConfig(slug: string): Promise<ClientConfig | nul
     farmCodeFields: client.farm_code_fields,
     primaryColor: client.primary_color,
     logoUrl: client.logo_url,
-    layerGroups: groups.map((g) => ({
+    // Divisões vazias (ex.: do modelo, ainda sem camadas) não aparecem no portal.
+    layerGroups: groups.filter((g) => g.layers.length > 0).map((g) => ({
       title: g.title,
       layers: g.layers.map((l) => ({
         id: l.layer_key,

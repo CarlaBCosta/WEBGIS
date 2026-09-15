@@ -342,11 +342,26 @@ export function ClientForm({ initial }: ClientFormProps) {
       setLogoFile(null);
     }
 
+    // Todo cliente novo recebe as divisões do modelo (mesmo sem camadas ainda);
+    // divisões já existentes de um envio anterior não são duplicadas.
+    if (!isEdit && clientId) {
+      const mRes = await fetch('/api/admin/layer-groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, carregarModelo: true }),
+      });
+      if (!mRes.ok) {
+        const mBody = await mRes.json().catch(() => ({}));
+        setError(mBody.error || 'Cliente criado, mas falhou ao carregar o modelo de divisões.');
+        setSaving(false);
+        return;
+      }
+    }
+
     // Envia as camadas (apenas no cadastro; a edição usa a tela de upload)
     const pendingLayers = layers.filter((l) => l.status !== 'ok');
     if (!isEdit && pendingLayers.length > 0 && clientId) {
-      // Cria apenas os grupos temáticos que têm camadas, na ordem da
-      // taxonomia, reaproveitando os que já existirem de envio anterior.
+      // Cria divisões que não são do modelo (fallback sem migration 0003).
       const templateOrder = new Map(templates.map((t, i) => [t.title, i]));
       const neededTitles = [...new Set(pendingLayers.map((l) => l.groupTitle))].sort(
         (a, b) => (templateOrder.get(a) ?? 99) - (templateOrder.get(b) ?? 99)

@@ -17,12 +17,23 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // Single update: { id, label?, style?, defaultActive?, available? }
+  // Single update: { id, label?, style?, defaultActive?, groupId? }
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.label !== undefined) update.label = body.label;
   if (body.legendStyle !== undefined) update.legend_style = body.legendStyle;
   if (body.style !== undefined) update.style = body.style;
   if (body.defaultActive !== undefined) update.default_active = body.defaultActive;
+  if (body.groupId !== undefined) {
+    // Mover para outra divisão: entra no fim dela.
+    const { data: ultima } = await supabaseAdmin
+      .from('layers')
+      .select('sort_order')
+      .eq('group_id', body.groupId)
+      .order('sort_order', { ascending: false })
+      .limit(1);
+    update.group_id = body.groupId;
+    update.sort_order = ultima && ultima.length > 0 ? ultima[0].sort_order + 1 : 0;
+  }
 
   const { data, error } = await supabaseAdmin.from('layers').update(update).eq('id', body.id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });

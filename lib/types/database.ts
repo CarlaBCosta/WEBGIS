@@ -32,6 +32,8 @@ export interface LayerGroupRow {
   client_id: string;
   title: string;
   sort_order: number;
+  descricao: string;
+  template_id: string | null; // divisão do modelo de onde veio (migration 0007)
 }
 
 export interface LayerRow {
@@ -89,6 +91,7 @@ export interface LayerGroupTemplateRow {
   id: string;
   title: string;
   objective: string;
+  descricao: string;
   sort_order: number;
   keywords: string[];
 }

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import type { ClientRow, LayerGroupWithLayersRow } from '@/lib/types/database';
+import type { ClientRow, LayerGroupTemplateRow, LayerGroupWithLayersRow } from '@/lib/types/database';
 import { LayerGroupEditor } from '@/components/admin/LayerGroupEditor';
 
 export default async function CamadasPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -13,12 +13,19 @@ export default async function CamadasPage({ params }: { params: Promise<{ slug: 
 
   if (!client) notFound();
 
-  const { data: groups } = await supabaseAdmin
-    .from('layer_groups')
-    .select('*, layers(*)')
-    .eq('client_id', client.id)
-    .order('sort_order', { ascending: true })
-    .returns<LayerGroupWithLayersRow[]>();
+  const [{ data: groups }, { data: templates }] = await Promise.all([
+    supabaseAdmin
+      .from('layer_groups')
+      .select('*, layers(*)')
+      .eq('client_id', client.id)
+      .order('sort_order', { ascending: true })
+      .returns<LayerGroupWithLayersRow[]>(),
+    supabaseAdmin
+      .from('layer_group_templates')
+      .select('*')
+      .order('sort_order', { ascending: true })
+      .returns<LayerGroupTemplateRow[]>(),
+  ]);
 
   (groups || []).forEach((g) => g.layers.sort((a, b) => a.sort_order - b.sort_order));
 
@@ -26,9 +33,10 @@ export default async function CamadasPage({ params }: { params: Promise<{ slug: 
     <div>
       <h1 className="mb-1 text-xl font-semibold">Camadas de {client.name}</h1>
       <p className="mb-6 text-sm text-zinc-500">
-        Grupos e camadas, na ordem em que aparecem no painel. Use os botões ↑/↓ para reordenar.
+        Divisões e camadas, na ordem em que aparecem no portal. Use ↑/↓ para reordenar e o seletor de cada camada
+        para mudá-la de divisão.
       </p>
-      <LayerGroupEditor clientId={client.id} initialGroups={groups || []} />
+      <LayerGroupEditor clientId={client.id} initialGroups={groups || []} templates={templates || []} />
     </div>
   );
 }

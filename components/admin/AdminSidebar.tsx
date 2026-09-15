@@ -26,6 +26,16 @@ const NAV = [
       </svg>
     ),
   },
+  {
+    href: '/admin/modelo-divisoes',
+    label: 'Modelo de divisões',
+    isActive: (path: string) => path === '/admin/modelo-divisoes',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden>
+        <path d="M3.5 4.5A1.5 1.5 0 0 1 5 3h10a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 15 7H5a1.5 1.5 0 0 1-1.5-1.5v-1ZM3.5 9.5A1.5 1.5 0 0 1 5 8h10a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 15 12H5a1.5 1.5 0 0 1-1.5-1.5v-1ZM5 13a1.5 1.5 0 0 0-1.5 1.5v1A1.5 1.5 0 0 0 5 17h10a1.5 1.5 0 0 0 1.5-1.5v-1A1.5 1.5 0 0 0 15 13H5Z" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminSidebar({ userName }: { userName?: string | null }) {
