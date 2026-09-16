@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { preprocessGeoJSON, detectGeometryType, type GeoJSONFeatureCollection } from '@/lib/geo/preprocess';
+import { preprocessGeoJSON, detectGeometryType, temCoordenadas, type GeoJSONFeatureCollection } from '@/lib/geo/preprocess';
 
 export async function POST(request: NextRequest) {
   const form = await request.formData();
@@ -102,9 +102,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: upsertError.message }, { status: 400 });
   }
 
+  // Feições sem polígono (geometria vazia): ficam na tabela, mas não aparecem
+  // no mapa nem geram timelapse. Avisar no envio evita descobrir só depois.
+  const semGeometria = parsed.features.filter((f) => !temCoordenadas(f.geometry)).length;
+
   return NextResponse.json({
     layer,
     originalCount,
     keptCount,
+    semGeometria,
   });
 }

@@ -110,6 +110,7 @@ interface PendingLayer {
   visible: boolean;
   status: UploadStatus;
   error?: string;
+  semGeometria?: number; // feições enviadas sem polígono (informado pelo servidor)
 }
 
 const inputClass =
@@ -456,11 +457,11 @@ export function ClientForm({ initial, tiposProjeto, camadasExistentes = [] }: Cl
 
         try {
           const upRes = await fetch('/api/admin/upload-geojson', { method: 'POST', body: form });
+          const upBody = await upRes.json().catch(() => ({}));
           if (!upRes.ok) {
-            const upBody = await upRes.json().catch(() => ({}));
             throw new Error(upBody.error || `HTTP ${upRes.status}`);
           }
-          markLayer(layer.key, { status: 'ok' });
+          markLayer(layer.key, { status: 'ok', semGeometria: upBody.semGeometria ?? 0 });
         } catch (err) {
           failed++;
           markLayer(layer.key, {
@@ -797,6 +798,12 @@ export function ClientForm({ initial, tiposProjeto, camadasExistentes = [] }: Cl
                                 {formatSize(l.size)}
                                 {substitui && <span className="text-amber-400/90"> · substitui a camada atual</span>}
                                 {l.status === 'erro' && l.error && <span className="text-red-400/80"> · {l.error}</span>}
+                                {!!l.semGeometria && (
+                                  <span className="text-amber-400/90">
+                                    {' '}
+                                    · {l.semGeometria} feição(ões) sem polígono — não aparecem no mapa; corrija no QGIS
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td className="px-2 py-2.5">

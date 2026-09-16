@@ -101,6 +101,15 @@ export function traverseCoordinates(
   }
 }
 
+/** True se a geometria tem ao menos um ponto (QGIS exporta geometria vazia como `coordinates: []`). */
+export function temCoordenadas(geom: GeoJSONGeometry | null | undefined): boolean {
+  let achou = false;
+  traverseCoordinates(geom, (pt) => {
+    if (Array.isArray(pt) && typeof pt[0] === 'number') achou = true;
+  });
+  return achou;
+}
+
 export function getFeatureBBox(feature: GeoJSONFeature): BBox {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   traverseCoordinates(feature.geometry, (pt) => {

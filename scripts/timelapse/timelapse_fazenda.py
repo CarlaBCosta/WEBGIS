@@ -323,6 +323,15 @@ def gif_para_mp4(gif: Path, mp4: Path, fps: int) -> None:
 # Processamento de uma fazenda
 # ---------------------------------------------------------------------------
 
+def _tem_coordenadas(coords) -> bool:
+    """True se há ao menos um par numérico dentro da estrutura de coordenadas."""
+    if isinstance(coords, (list, tuple)):
+        if len(coords) >= 2 and all(isinstance(c, (int, float)) for c in coords[:2]):
+            return True
+        return any(_tem_coordenadas(c) for c in coords)
+    return False
+
+
 def nome_seguro(texto: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", texto).strip("_") or "sem_codigo"
 
@@ -341,6 +350,16 @@ def gerar_fazenda(codigo: str, feicoes: list[dict], cfg: argparse.Namespace) -> 
     if pronta and not cfg.sobrescrever:
         relatorio["status"] = "pulada (já existe)"
         print("  já existe — pulando (use --sobrescrever para refazer)")
+        return relatorio
+
+    # Feições com geometria vazia (o QGIS exporta "coordinates": []) não têm área
+    # para recortar; sem nenhuma válida, a fazenda não gera vídeo — e a mensagem
+    # diz o motivo real, em vez de "nenhum ano com imagens".
+    feicoes = [f for f in feicoes if _tem_coordenadas((f.get("geometry") or {}).get("coordinates"))]
+    if not feicoes:
+        relatorio["status"] = ("erro: fazenda sem polígono (geometria vazia no arquivo) — "
+                               "corrija a geometria no QGIS e reenvie a camada")
+        aviso("fazenda sem polígono (geometria vazia no arquivo) — nada a gerar.")
         return relatorio
 
     fazenda = ee.FeatureCollection([ee.Feature(ee.Geometry(f["geometry"])) for f in feicoes])
