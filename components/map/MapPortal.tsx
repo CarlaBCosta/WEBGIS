@@ -9,9 +9,11 @@ import { useLayerData } from '@/hooks/useLayerData';
 import { useLayerVisibility } from '@/hooks/useLayerVisibility';
 import { useFarmFilter } from '@/hooks/useFarmFilter';
 import { useFeatureInfo } from '@/hooks/useFeatureInfo';
+import { useMutView } from '@/hooks/useMutView';
 import { useMeasurementTool } from '@/hooks/useMeasurementTool';
 import { useToasts } from '@/hooks/useToasts';
 import { LayerPanel } from './LayerPanel';
+import { MutControl } from './MutControl';
 import { FarmFilterBar } from './FarmFilterBar';
 import { ToolsPanel } from './ToolsPanel';
 import { InfoPanel } from './InfoPanel';
@@ -47,6 +49,8 @@ export function MapPortal({ config }: { config: ClientConfig }) {
     zoomToStudyArea,
   } = useLayerVisibility(map, config, loadLayer, onFeatureClick, onLayerLoadError);
 
+  const mutView = useMutView({ map, mut: config.mut, loadLayer, onSelecionarFeicao: onFeatureClick });
+
   const farmFilter = useFarmFilter(map, activeLayers, config.farmCodeFields);
   const measurement = useMeasurementTool(map);
 
@@ -78,15 +82,25 @@ export function MapPortal({ config }: { config: ClientConfig }) {
         measurement.handleMapClick(e);
       } else {
         featureInfo.close();
+        mutView.limparSelecao();
       }
     };
     map.on('click', handler);
     return () => {
       map.off('click', handler);
     };
-  }, [map, measurement, featureInfo]);
+  }, [map, measurement, featureInfo, mutView]);
 
   const handleToggleLayer = (layerKey: string) => toggleLayer(layerKey, farmFilter.reapplyToLayer);
+
+  // A visão MUT desenha a camada por conta própria: ao ligá-la, a mesma camada
+  // sai do painel comum para não ficar desenhada duas vezes.
+  const handleAlternarMut = () => {
+    if (!mutView.ativo && config.mut && visible[config.mut.layerKey]) {
+      toggleLayer(config.mut.layerKey, farmFilter.reapplyToLayer);
+    }
+    mutView.alternar();
+  };
 
   return (
     <div className="map-wrapper">
@@ -103,7 +117,24 @@ export function MapPortal({ config }: { config: ClientConfig }) {
           onClear={farmFilter.clear}
           statusMessage={farmFilter.statusMessage}
         />
-        <LayerPanel config={config} status={status} visible={visible} onToggle={handleToggleLayer} />
+        {config.mut && (
+          <MutControl
+            mut={config.mut}
+            ativo={mutView.ativo}
+            carregando={mutView.carregando}
+            erro={mutView.erro}
+            modo={mutView.modo}
+            onAlternar={handleAlternarMut}
+            onModo={mutView.setModo}
+          />
+        )}
+        <LayerPanel
+          config={config}
+          status={status}
+          visible={visible}
+          onToggle={handleToggleLayer}
+          travada={mutView.ativo ? config.mut?.layerKey : null}
+        />
       </div>
 
       <ToolsPanel
@@ -117,9 +148,14 @@ export function MapPortal({ config }: { config: ClientConfig }) {
 
       <InfoPanel
         selected={featureInfo.selected}
-        onClose={featureInfo.close}
+        onClose={() => {
+          featureInfo.close();
+          mutView.limparSelecao();
+        }}
         clientId={config.clientId}
         farmCodeFields={config.farmCodeFields}
+        mut={config.mut}
+        resumoMut={mutView.resumo}
       />
 
       <Toast toasts={toasts} />

@@ -673,3 +673,279 @@ input:checked + .slider:before {
   padding: 2px 8px;
   border-radius: 6px;
 }
+
+/* ---------------------------------------------------------------------------
+   Visão MUT (Mudança do Uso do Solo)
+   Controle no painel de camadas, dados no hover e o resumo da fazenda que
+   substitui a prancha do QGIS.
+---------------------------------------------------------------------------- */
+.mut-control {
+  border-bottom: 1px solid var(--border-color);
+  padding: 12px 20px 14px;
+}
+
+.mut-control.ativo {
+  background: rgba(154, 205, 50, 0.06);
+}
+
+.mut-control-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.mut-control-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.mut-control-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.mut-control-corpo {
+  margin-top: 12px;
+}
+
+.mut-modos {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 9px;
+}
+
+.mut-modos button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.mut-modos button:hover:not(:disabled) {
+  color: var(--text-main);
+}
+
+.mut-modos button.ativo {
+  background: var(--primary-grad);
+  color: #15200a;
+}
+
+.mut-modos button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mut-legenda {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 150px;
+  overflow-y: auto;
+  display: grid;
+  gap: 5px;
+}
+
+.mut-legenda li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-main);
+}
+
+.mut-legenda-cor {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.mut-aviso {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: #fbbf24;
+}
+
+.mut-erro {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: #f87171;
+}
+
+/* Tooltip do hover: mesmos dados do popup, sem precisar clicar */
+.leaflet-tooltip.mut-tooltip-wrapper {
+  background: var(--bg-panel);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 10px;
+}
+
+.leaflet-tooltip.mut-tooltip-wrapper::before {
+  display: none;
+}
+
+.mut-tooltip strong {
+  color: var(--primary-light);
+}
+
+.mut-tag {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mut-tag.elegivel {
+  background: rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+}
+
+.mut-tag.inelegivel {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+/* Resumo da fazenda dentro do painel de informações */
+.mut-resumo {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mut-resumo-fazenda {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.mut-resumo-codigo {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.mut-resumo-dados {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 0 0 12px;
+}
+
+.mut-resumo-dados dt {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+}
+
+.mut-resumo-dados dd {
+  margin: 1px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.mut-selo {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.mut-selo.elegivel {
+  background: rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+}
+
+.mut-selo.parcial {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fbbf24;
+}
+
+.mut-selo.inelegivel {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+.mut-barra {
+  display: flex;
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mut-barra span {
+  display: block;
+  height: 100%;
+}
+
+.mut-barra-legenda {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.mut-resumo-titulo {
+  margin-top: 14px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.mut-classes {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+}
+
+.mut-classes td {
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-main);
+  vertical-align: middle;
+}
+
+.mut-classes td .mut-legenda-cor {
+  margin-right: 8px;
+  vertical-align: -1px;
+}
+
+.mut-classes td.valor {
+  text-align: right;
+  color: var(--text-muted);
+  white-space: nowrap;
+}

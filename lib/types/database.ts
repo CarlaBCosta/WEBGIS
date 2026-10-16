@@ -102,3 +102,31 @@ export interface LayerGroupTemplateRow {
   sort_order: number;
   keywords: string[];
 }
+
+// Visão MUT (migration 0009): qual camada é a de mudança do uso do solo e em
+// que campo está cada informação. Um registro por cliente.
+export interface MutConfigRow {
+  client_id: string;
+  layer_key: string;
+  campo_codigo: string;
+  campo_talhao: string | null;
+  campo_area: string | null;
+  campo_elegibilidade: string;
+  valores_elegivel: string[];
+  campo_uso: string | null;
+  nome_fazenda: string;
+  safra: string;
+  ano_inicial: number;
+  ativo: boolean;
+  updated_at: string;
+}
+
+// Catálogo de classes de uso do solo com a cor de cada uma.
+// client_id nulo = modelo global; com client_id = exceção daquele cliente.
+export interface MutClasseRow {
+  id: string;
+  client_id: string | null;
+  nome: string;
+  cor: string;
+  sort_order: number;
+}

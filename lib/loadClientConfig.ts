@@ -1,6 +1,7 @@
 import { supabaseBrowser } from '@/lib/supabase/client';
-import type { ClientRow, LayerGroupWithLayersRow } from '@/lib/types/database';
-import type { ClientConfig } from '@/lib/types/domain';
+import type { ClientRow, LayerGroupWithLayersRow, MutClasseRow, MutConfigRow } from '@/lib/types/database';
+import type { ClientConfig, MutConfig } from '@/lib/types/domain';
+import { CAMPO_ELEGIBILIDADE_PADRAO, VALORES_ELEGIVEL_PADRAO } from '@/lib/mut';
 
 // Ports loadClientConfig() from shared/app.js. Runs server-side now (called
 // from app/cliente/[slug]/page.tsx, a server component) using the same
@@ -26,6 +27,8 @@ export async function loadClientConfig(slug: string): Promise<ClientConfig | nul
 
   groups.forEach((g) => g.layers.sort((a, b) => a.sort_order - b.sort_order));
 
+  const mut = await carregarMut(client.id);
+
   return {
     slug,
     clientId: client.id,
@@ -48,5 +51,50 @@ export async function loadClientConfig(slug: string): Promise<ClientConfig | nul
         defaultActive: l.default_active,
       })),
     })),
+    mut,
+  };
+}
+
+// Visão MUT do cliente + catálogo de classes (modelo global sobrescrito pelas
+// exceções do cliente). Tabelas da migration 0009: se ela ainda não tiver sido
+// aplicada, a consulta falha e o portal segue sem a visão MUT.
+async function carregarMut(clientId: string): Promise<MutConfig | null> {
+  const { data: cfg } = await supabaseBrowser
+    .from('mut_config')
+    .select('*')
+    .eq('client_id', clientId)
+    .eq('ativo', true)
+    .maybeSingle<MutConfigRow>();
+
+  if (!cfg?.layer_key) return null;
+
+  const { data: linhas } = await supabaseBrowser
+    .from('mut_classes')
+    .select('*')
+    .or(`client_id.is.null,client_id.eq.${clientId}`)
+    .order('sort_order', { ascending: true })
+    .returns<MutClasseRow[]>();
+
+  const porNome = new Map<string, MutClasseRow>();
+  for (const linha of linhas ?? []) {
+    const chave = linha.nome.toLowerCase();
+    // A exceção do cliente vence o modelo global, venha em que ordem vier.
+    if (!porNome.has(chave) || linha.client_id) porNome.set(chave, linha);
+  }
+
+  return {
+    layerKey: cfg.layer_key,
+    campoCodigo: cfg.campo_codigo,
+    campoTalhao: cfg.campo_talhao,
+    campoArea: cfg.campo_area,
+    campoElegibilidade: cfg.campo_elegibilidade || CAMPO_ELEGIBILIDADE_PADRAO,
+    valoresElegivel: cfg.valores_elegivel?.length ? cfg.valores_elegivel : VALORES_ELEGIVEL_PADRAO,
+    campoUso: cfg.campo_uso,
+    nomeFazenda: cfg.nome_fazenda,
+    safra: cfg.safra,
+    anoInicial: cfg.ano_inicial,
+    classes: [...porNome.values()]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((c) => ({ nome: c.nome, cor: c.cor })),
   };
 }

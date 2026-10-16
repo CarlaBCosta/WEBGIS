@@ -17,6 +17,27 @@ export interface LayerGroupConfig {
   layers: LayerConfig[];
 }
 
+// Visão MUT: configuração já resolvida (campos + catálogo de classes) que o
+// portal usa para colorir, mostrar no hover e resumir a fazenda.
+export interface MutClasse {
+  nome: string;
+  cor: string;
+}
+
+export interface MutConfig {
+  layerKey: string;
+  campoCodigo: string;
+  campoTalhao: string | null;
+  campoArea: string | null;
+  campoElegibilidade: string;
+  valoresElegivel: string[];
+  campoUso: string | null;
+  nomeFazenda: string;
+  safra: string;
+  anoInicial: number;
+  classes: MutClasse[];
+}
+
 export interface ClientConfig {
   slug: string;
   clientId: string;
@@ -31,4 +52,6 @@ export interface ClientConfig {
   primaryColor: string | null;
   logoUrl: string | null;
   layerGroups: LayerGroupConfig[];
+  // null quando o cliente não tem visão MUT configurada ou ela está desligada.
+  mut: MutConfig | null;
 }

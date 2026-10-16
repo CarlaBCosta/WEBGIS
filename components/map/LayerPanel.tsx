@@ -9,6 +9,9 @@ interface LayerPanelProps {
   status: Record<string, LayerStatus>;
   visible: Record<string, boolean>;
   onToggle: (layerKey: string) => void;
+  // Camada que a visão MUT está desenhando: fica travada aqui para não
+  // aparecer duas vezes no mapa.
+  travada?: string | null;
 }
 
 const LayerItem = memo(function LayerItem({
@@ -17,28 +20,32 @@ const LayerItem = memo(function LayerItem({
   isActive,
   layerStatus,
   onToggle,
+  travada,
 }: {
   label: string;
   legendStyle: string;
   isActive: boolean;
   layerStatus: LayerStatus;
   onToggle: () => void;
+  travada: boolean;
 }) {
   const isLoading = layerStatus === 'loading';
   const isError = layerStatus === 'error';
+  const bloqueada = isError || travada;
 
   return (
     <div
       className={`layer-item${isActive ? ' active' : ''}${isLoading ? ' loading' : ''}`}
-      style={isError ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
-      onClick={() => !isError && onToggle()}
+      style={bloqueada ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+      title={travada ? 'Esta camada está sendo exibida pela Visão MUT.' : undefined}
+      onClick={() => !bloqueada && onToggle()}
     >
       <div className="layer-label">
         <span className="layer-legend-icon" style={parseLegendStyle(legendStyle)} />
         {label}
       </div>
       <label className="switch" onClick={(e) => e.stopPropagation()}>
-        <input type="checkbox" checked={isActive} disabled={isError} onChange={onToggle} />
+        <input type="checkbox" checked={isActive} disabled={bloqueada} onChange={onToggle} />
         <span className="slider" />
       </label>
     </div>
@@ -59,7 +66,7 @@ function parseLegendStyle(css: string): React.CSSProperties {
   return result as React.CSSProperties;
 }
 
-export const LayerPanel = memo(function LayerPanel({ config, status, visible, onToggle }: LayerPanelProps) {
+export const LayerPanel = memo(function LayerPanel({ config, status, visible, onToggle, travada }: LayerPanelProps) {
   return (
     <div className="panel-content">
       {config.layerGroups.map((group) => (
@@ -73,6 +80,7 @@ export const LayerPanel = memo(function LayerPanel({ config, status, visible, on
               isActive={!!visible[layer.id]}
               layerStatus={status[layer.id] || 'idle'}
               onToggle={() => onToggle(layer.id)}
+              travada={layer.id === travada}
             />
           ))}
         </div>

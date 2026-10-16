@@ -4,8 +4,11 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import type { ClientRow } from '@/lib/types/database';
 import { ClientForm } from '@/components/admin/ClientForm';
 import { TimelapseCard } from '@/components/admin/TimelapseCard';
+import { MutCard } from '@/components/admin/MutCard';
 import { carregarTiposProjeto } from '@/lib/tiposProjeto';
 import { sugerirFazendas } from '@/lib/timelapseServidor';
+import { sugerirCamadaMut } from '@/lib/mutServidor';
+import type { MutConfigRow } from '@/lib/types/database';
 
 export default async function EditClientePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -17,7 +20,7 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
 
   if (!client) notFound();
 
-  const [{ data: layers }, tiposProjeto] = await Promise.all([
+  const [{ data: layers }, tiposProjeto, { data: mutConfig }] = await Promise.all([
     supabaseAdmin
       .from('layers')
       .select('layer_key, label, storage_path')
@@ -25,8 +28,12 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
       .not('storage_path', 'is', null)
       .order('label', { ascending: true }),
     carregarTiposProjeto(),
+    supabaseAdmin.from('mut_config').select('*').eq('client_id', client.id).maybeSingle<MutConfigRow>(),
   ]);
-  const sugestao = await sugerirFazendas(layers ?? [], client.farm_code_fields ?? []);
+  const [sugestao, sugestaoMut] = await Promise.all([
+    sugerirFazendas(layers ?? [], client.farm_code_fields ?? []),
+    sugerirCamadaMut(layers ?? [], mutConfig?.layer_key ?? null),
+  ]);
 
   return (
     <div>
@@ -45,6 +52,12 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
         clientId={client.id}
         layers={(layers ?? []).map(({ layer_key, label }) => ({ layer_key, label }))}
         sugestao={sugestao}
+      />
+      <MutCard
+        clientId={client.id}
+        layers={(layers ?? []).map(({ layer_key, label }) => ({ layer_key, label }))}
+        config={mutConfig ?? null}
+        sugestao={sugestaoMut}
       />
       <ClientForm
         initial={client}

@@ -36,6 +36,16 @@ const NAV = [
       </svg>
     ),
   },
+  {
+    href: '/admin/classes-mut',
+    label: 'Classes de uso do solo',
+    isActive: (path: string) => path === '/admin/classes-mut',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden>
+        <path d="M10 2.5c-4.1 0-7.5 2.9-7.5 6.6 0 3.6 3.1 5.6 5.4 5.6.9 0 1.4.4 1.4 1 0 .3-.1.5-.3.8-.2.3-.3.6-.3 1 0 .6.5 1 1.3 1 4.1 0 7.5-3.4 7.5-7.5S14.1 2.5 10 2.5ZM6 10.8a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm2.3-3.4a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm3.4 0a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm2.3 3.4a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Z" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminSidebar({ userName }: { userName?: string | null }) {

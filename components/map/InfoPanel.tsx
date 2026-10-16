@@ -5,15 +5,21 @@ import type { SelectedFeature } from '@/hooks/useFeatureInfo';
 import { formatLabel } from '@/lib/config/propertyDisplayNames';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { TimelapseModal, anosDoVideo, type TimelapseVideo } from './TimelapseModal';
+import { MutResumo } from './MutResumo';
+import type { MutConfig } from '@/lib/types/domain';
+import type { ResumoFazenda } from '@/lib/mut';
 
 interface InfoPanelProps {
   selected: SelectedFeature | null;
   onClose: () => void;
   clientId: string;
   farmCodeFields: string[];
+  // Resumo da fazenda quando a feição clicada veio da visão MUT.
+  mut?: MutConfig | null;
+  resumoMut?: ResumoFazenda | null;
 }
 
-export function InfoPanel({ selected, onClose, clientId, farmCodeFields }: InfoPanelProps) {
+export function InfoPanel({ selected, onClose, clientId, farmCodeFields, mut, resumoMut }: InfoPanelProps) {
   // Resultado e vídeo aberto ficam associados à feição a que pertencem: ao trocar
   // de feição, deixam de valer sem precisar zerar estado dentro do efeito.
   const [resultado, setResultado] = useState<{ feicao: SelectedFeature; videos: TimelapseVideo[] } | null>(null);
@@ -80,6 +86,7 @@ export function InfoPanel({ selected, onClose, clientId, farmCodeFields }: InfoP
           {selected && (
             <>
               <div className="info-title">{selected.layerName.replace(/_/g, ' ')}</div>
+              {mut && resumoMut && <MutResumo resumo={resumoMut} mut={mut} />}
               {videos.length > 0 && (
                 <div className="timelapse-botoes">
                   {videos.map((v) => {
