@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { loadClientConfig } from '@/lib/loadClientConfig';
-import { MapPortal } from '@/components/map/MapPortal';
+import { MapPortalLoader } from '@/components/map/MapPortalLoader';
 
 export default async function ClientePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -22,7 +22,7 @@ export default async function ClientePage({ params }: { params: Promise<{ slug: 
           <img className="client-logo" src={config.logoUrl} alt={`Logo ${config.clientName}`} />
         )}
       </header>
-      <MapPortal config={config} />
+      <MapPortalLoader config={config} />
     </div>
   );
 }

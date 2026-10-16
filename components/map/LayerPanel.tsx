@@ -12,14 +12,12 @@ interface LayerPanelProps {
 }
 
 const LayerItem = memo(function LayerItem({
-  id,
   label,
   legendStyle,
   isActive,
   layerStatus,
   onToggle,
 }: {
-  id: string;
   label: string;
   legendStyle: string;
   isActive: boolean;
@@ -70,7 +68,6 @@ export const LayerPanel = memo(function LayerPanel({ config, status, visible, on
           {group.layers.map((layer) => (
             <LayerItem
               key={layer.id}
-              id={layer.id}
               label={layer.label}
               legendStyle={layer.legendStyle}
               isActive={!!visible[layer.id]}

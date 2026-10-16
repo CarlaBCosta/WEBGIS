@@ -55,7 +55,10 @@ export function useLayerVisibility(
   onFeatureClick: (feature: GeoJSON.Feature, layerName: string) => void,
   onTransientError?: (layerLabel: string) => void
 ) {
-  const activeLayersRef = useRef<Map<string, L.GeoJSON>>(new Map());
+  // Mapa estável das camadas já montadas no Leaflet. Fica em useState (e não
+  // em useRef) porque o valor também é lido durante o render, ao ser repassado
+  // para os outros hooks do mapa.
+  const [activeLayers] = useState<Map<string, L.GeoJSON>>(() => new Map());
   // Extensão máxima de navegação (bbox da AID + buffer), calculada uma vez
   // após o carregamento das camadas padrão. Reutilizada pelo botão
   // "Centralizar na Área de Estudo".
@@ -88,7 +91,7 @@ export function useLayerVisibility(
   const toggleLayer = useCallback(
     async (layerKey: string, onMatchFilter?: (layerKey: string) => void) => {
       if (!map) return;
-      const existing = activeLayersRef.current.get(layerKey);
+      const existing = activeLayers.get(layerKey);
 
       if (existing) {
         if (map.hasLayer(existing)) {
@@ -112,7 +115,7 @@ export function useLayerVisibility(
           return;
         }
         const layer = buildLayer(data, styleFor(layerKey), onFeatureClick, layerKey);
-        activeLayersRef.current.set(layerKey, layer);
+        activeLayers.set(layerKey, layer);
         layer.addTo(map);
         setStatus((s) => ({ ...s, [layerKey]: 'active' }));
         setVisible((v) => ({ ...v, [layerKey]: true }));
@@ -129,7 +132,7 @@ export function useLayerVisibility(
         }
       }
     },
-    [map, loadLayer, styleFor, labelFor, onFeatureClick, onTransientError]
+    [map, activeLayers, loadLayer, styleFor, labelFor, onFeatureClick, onTransientError]
   );
 
   const loadDefaultLayers = useCallback(
@@ -145,7 +148,7 @@ export function useLayerVisibility(
               return;
             }
             const layer = buildLayer(data, styleFor(layerKey), onFeatureClick, layerKey);
-            activeLayersRef.current.set(layerKey, layer);
+            activeLayers.set(layerKey, layer);
             layer.addTo(map);
             setStatus((s) => ({ ...s, [layerKey]: 'active' }));
             setVisible((v) => ({ ...v, [layerKey]: true }));
@@ -160,16 +163,16 @@ export function useLayerVisibility(
         })
       );
     },
-    [map, loadLayer, styleFor, labelFor, onFeatureClick, onTransientError]
+    [map, activeLayers, loadLayer, styleFor, labelFor, onFeatureClick, onTransientError]
   );
 
   const zoomToLayer = useCallback(
     (layerKey: string | null) => {
       if (!map || !layerKey) return;
-      const layer = activeLayersRef.current.get(layerKey);
+      const layer = activeLayers.get(layerKey);
       if (layer) map.fitBounds(layer.getBounds(), { padding: [40, 40] });
     },
-    [map]
+    [map, activeLayers]
   );
 
   // Define a extensão máxima de navegação: bbox da camada da área de estudo
@@ -179,7 +182,7 @@ export function useLayerVisibility(
   const applyStudyAreaExtent = useCallback(
     (layerKey: string | null, bufferKm: number): boolean => {
       if (!map || !layerKey) return false;
-      const layer = activeLayersRef.current.get(layerKey);
+      const layer = activeLayers.get(layerKey);
       if (!layer) return false;
       const raw = layer.getBounds();
       if (!raw.isValid()) return false;
@@ -198,7 +201,7 @@ export function useLayerVisibility(
       map.fitBounds(bounds);
       return true;
     },
-    [map]
+    [map, activeLayers]
   );
 
   // Botão "Centralizar": volta sempre para a mesma extensão AID + buffer.
@@ -209,7 +212,7 @@ export function useLayerVisibility(
   }, [map]);
 
   return {
-    activeLayers: activeLayersRef.current,
+    activeLayers,
     status,
     visible,
     toggleLayer,
