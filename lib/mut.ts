@@ -8,6 +8,8 @@ import type { MutConfig } from '@/lib/types/domain';
 export const COR_ELEGIVEL = '#22c55e';
 export const COR_INELEGIVEL = '#ef4444';
 export const COR_SEM_CLASSE = '#9ca3af';
+// Camada sem o campo de elegibilidade: nem verde nem vermelho.
+export const COR_SEM_INFO = '#e5e7eb';
 
 export const CAMPO_ELEGIBILIDADE_PADRAO = 'ELEG';
 export const VALORES_ELEGIVEL_PADRAO = ['ELEGÍVEL'];
@@ -34,6 +36,30 @@ export function valorDoCampo(
     if (chave.toUpperCase() === alvo) return properties[chave];
   }
   return undefined;
+}
+
+// As classes saem do QGIS numeradas e sem acento ("4-Lavoura de Graos"); o
+// catálogo guarda o nome por extenso ("Lavoura de Grãos"). A comparação ignora
+// o número, os acentos e as maiúsculas.
+export function normalizarClasse(valor: unknown): string {
+  return normalizarTexto(valor).replace(/^\d+\s*[-–.]\s*/, '');
+}
+
+// Nome de exibição da classe: sem o número do QGIS.
+export function rotuloDaClasse(valor: unknown): string {
+  return String(valor ?? '')
+    .trim()
+    .replace(/^\d+\s*[-–.]\s*/, '');
+}
+
+export type Elegibilidade = 'elegivel' | 'inelegivel' | 'desconhecida';
+
+// Tri-estado: camada sem o campo de elegibilidade (ou com o campo vazio) não
+// pode ser pintada de vermelho — isso diria que a área é inelegível.
+export function elegibilidadeDaFeicao(feature: GeoJSON.Feature, mut: MutConfig): Elegibilidade {
+  const bruto = valorDoCampo(feature.properties as Record<string, unknown>, mut.campoElegibilidade);
+  if (bruto === undefined || bruto === null || String(bruto).trim() === '') return 'desconhecida';
+  return ehElegivel(bruto, mut.valoresElegivel) ? 'elegivel' : 'inelegivel';
 }
 
 export function ehElegivel(valor: unknown, valoresElegivel: string[]): boolean {
@@ -73,15 +99,25 @@ export interface ResumoFazenda {
   areaTotalHa: number;
   areaElegivelHa: number;
   areaInelegivelHa: number;
-  selo: 'elegivel' | 'parcial' | 'inelegivel';
+  // Área dos talhões que não trazem o campo de elegibilidade.
+  areaSemInfoHa: number;
+  selo: 'elegivel' | 'parcial' | 'inelegivel' | 'sem-info';
   classes: ResumoClasse[];
   centro: { lat: number; lng: number } | null;
 }
 
+// Nome como aparece na tela: o do catálogo (acentuado) quando a classe do
+// arquivo corresponde a alguma, senão o próprio nome do arquivo sem o número.
+export function nomeDeExibicaoDaClasse(classes: { nome: string }[], nome: unknown): string {
+  const alvo = normalizarClasse(nome);
+  const achada = classes.find((c) => normalizarClasse(c.nome) === alvo);
+  return achada ? achada.nome : rotuloDaClasse(nome) || 'Sem classificação';
+}
+
 export function corDaClasse(classes: { nome: string; cor: string }[], nome: unknown): string {
-  const alvo = normalizarTexto(nome);
+  const alvo = normalizarClasse(nome);
   if (!alvo) return COR_SEM_CLASSE;
-  const achada = classes.find((c) => normalizarTexto(c.nome) === alvo);
+  const achada = classes.find((c) => normalizarClasse(c.nome) === alvo);
   return achada ? achada.cor : COR_SEM_CLASSE;
 }
 
@@ -91,14 +127,18 @@ export function corDaFeicao(
   modo: 'elegibilidade' | 'uso'
 ): { contorno: string; preenchimento: string } {
   const props = feature.properties as Record<string, unknown>;
-  const elegivel = ehElegivel(valorDoCampo(props, mut.campoElegibilidade), mut.valoresElegivel);
-  const contorno = elegivel ? COR_ELEGIVEL : COR_INELEGIVEL;
+  const situacao = elegibilidadeDaFeicao(feature, mut);
+  const contorno =
+    situacao === 'elegivel' ? COR_ELEGIVEL : situacao === 'inelegivel' ? COR_INELEGIVEL : COR_SEM_INFO;
   if (modo === 'elegibilidade' || !mut.campoUso) {
     return { contorno, preenchimento: contorno };
   }
   // No modo uso do solo o preenchimento mostra a classe e o contorno continua
-  // dizendo se o talhão é elegível — as duas leituras ao mesmo tempo.
-  return { contorno, preenchimento: corDaClasse(mut.classes, valorDoCampo(props, mut.campoUso)) };
+  // dizendo se o talhão é elegível — as duas leituras ao mesmo tempo. Sem
+  // elegibilidade no arquivo, o contorno acompanha a classe: um traço neutro
+  // em volta de cada polígono apagaria a cor dos talhões pequenos.
+  const preenchimento = corDaClasse(mut.classes, valorDoCampo(props, mut.campoUso));
+  return { contorno: situacao === 'desconhecida' ? preenchimento : contorno, preenchimento };
 }
 
 // Soma os talhões de uma fazenda: total, elegível/inelegível e área por classe.
@@ -111,6 +151,7 @@ export function resumirFazenda(
 
   let areaTotalHa = 0;
   let areaElegivelHa = 0;
+  let areaSemInfoHa = 0;
   const porClasse = new Map<string, number>();
   let minLat = Infinity;
   let maxLat = -Infinity;
@@ -121,11 +162,11 @@ export function resumirFazenda(
     const props = f.properties as Record<string, unknown>;
     const ha = areaHaDaFeicao(f, mut.campoArea);
     areaTotalHa += ha;
-    if (ehElegivel(valorDoCampo(props, mut.campoElegibilidade), mut.valoresElegivel)) {
-      areaElegivelHa += ha;
-    }
+    const situacao = elegibilidadeDaFeicao(f, mut);
+    if (situacao === 'elegivel') areaElegivelHa += ha;
+    else if (situacao === 'desconhecida') areaSemInfoHa += ha;
     if (mut.campoUso) {
-      const classe = String(valorDoCampo(props, mut.campoUso) ?? '').trim() || 'Sem classificação';
+      const classe = nomeDeExibicaoDaClasse(mut.classes, valorDoCampo(props, mut.campoUso));
       porClasse.set(classe, (porClasse.get(classe) ?? 0) + ha);
     }
     percorrerCoordenadas(f.geometry, (lng, lat) => {
@@ -136,17 +177,23 @@ export function resumirFazenda(
     });
   }
 
-  const areaInelegivelHa = Math.max(areaTotalHa - areaElegivelHa, 0);
+  const areaInelegivelHa = Math.max(areaTotalHa - areaElegivelHa - areaSemInfoHa, 0);
   const selo: ResumoFazenda['selo'] =
-    areaInelegivelHa <= 0.0005 ? 'elegivel' : areaElegivelHa <= 0.0005 ? 'inelegivel' : 'parcial';
+    areaElegivelHa <= 0.0005 && areaInelegivelHa <= 0.0005
+      ? 'sem-info'
+      : areaInelegivelHa <= 0.0005
+        ? 'elegivel'
+        : areaElegivelHa <= 0.0005
+          ? 'inelegivel'
+          : 'parcial';
 
   // Classes na ordem do catálogo; as que não estão no catálogo vão no fim.
-  const ordem = new Map(mut.classes.map((c, i) => [normalizarTexto(c.nome), i]));
+  const ordem = new Map(mut.classes.map((c, i) => [normalizarClasse(c.nome), i]));
   const classes: ResumoClasse[] = [...porClasse.entries()]
     .map(([nome, areaHa]) => ({ nome, areaHa, cor: corDaClasse(mut.classes, nome) }))
     .sort(
       (a, b) =>
-        (ordem.get(normalizarTexto(a.nome)) ?? 999) - (ordem.get(normalizarTexto(b.nome)) ?? 999) ||
+        (ordem.get(normalizarClasse(a.nome)) ?? 999) - (ordem.get(normalizarClasse(b.nome)) ?? 999) ||
         b.areaHa - a.areaHa
     );
 
@@ -156,6 +203,7 @@ export function resumirFazenda(
     areaTotalHa,
     areaElegivelHa,
     areaInelegivelHa,
+    areaSemInfoHa,
     selo,
     classes,
     centro:
@@ -184,11 +232,13 @@ export function formatarHa(valor: number): string {
 // --- Detecção de campos no cadastro -----------------------------------------
 
 const PISTAS = {
-  codigo: ['FAZENDA', 'COD_FAZENDA', 'CODIGO', 'COD', 'CHAVE_USIN', 'CHAVE_AMB'],
+  codigo: ['CODIGO', 'FAZENDA', 'COD_FAZENDA', 'COD', 'CHAVE_USIN', 'CHAVE_AMB'],
   talhao: ['TALHAO', 'TALHÃO', 'TALHOES', 'LOTE'],
-  area: ['AREA', 'ÁREA', 'AREA_HA', 'HA', 'AREA_HECTARE'],
+  // AREA_MUT é a área do próprio polígono do MUT; AREA e AREA_GIS costumam ser
+  // a área do talhão agrícola e a da fazenda inteira.
+  area: ['AREA_MUT', 'AREA_HA', 'AREA', 'ÁREA', 'HA', 'AREA_HECTARE'],
   elegibilidade: ['ELEG', 'ELEGIBILIDADE', 'ELEGIVEL', 'ELEGÍVEL', 'STATUS_ELEG'],
-  uso: ['USO', 'USO_SOLO', 'USO_DO_SOLO', 'CLASSE', 'CLASSE_USO', 'COBERTURA', 'LULC', 'MUT'],
+  uso: ['CLASSE_08', 'USO', 'USO_SOLO', 'USO_DO_SOLO', 'CLASSE', 'CLASSE_USO', 'COBERTURA', 'LULC', 'MUT'],
 } as const;
 
 export type CamposMut = { [K in keyof typeof PISTAS]: string | null };
@@ -216,8 +266,9 @@ export function detectarCamposMut(campos: string[]): CamposMut {
   };
 }
 
-// A camada tem cara de MUT? Precisa de código e de elegibilidade.
+// A camada tem cara de MUT? Precisa do código da fazenda e de uso do solo ou
+// de elegibilidade — o MUT 2008 real vem só com a classe de uso.
 export function pareceCamadaMut(campos: string[]): boolean {
   const detectado = detectarCamposMut(campos);
-  return !!detectado.codigo && !!detectado.elegibilidade;
+  return !!detectado.codigo && (!!detectado.uso || !!detectado.elegibilidade);
 }

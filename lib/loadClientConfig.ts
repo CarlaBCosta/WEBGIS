@@ -93,6 +93,7 @@ async function carregarMut(clientId: string): Promise<MutConfig | null> {
     nomeFazenda: cfg.nome_fazenda,
     safra: cfg.safra,
     anoInicial: cfg.ano_inicial,
+    anoMut: cfg.ano_mut ?? 2008,
     classes: [...porNome.values()]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((c) => ({ nome: c.nome, cor: c.cor })),

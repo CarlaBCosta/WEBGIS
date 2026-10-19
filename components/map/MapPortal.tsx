@@ -49,7 +49,13 @@ export function MapPortal({ config }: { config: ClientConfig }) {
     zoomToStudyArea,
   } = useLayerVisibility(map, config, loadLayer, onFeatureClick, onLayerLoadError);
 
-  const mutView = useMutView({ map, mut: config.mut, loadLayer, onSelecionarFeicao: onFeatureClick });
+  const mutView = useMutView({
+    map,
+    mut: config.mut,
+    loadLayer,
+    onSelecionarFeicao: onFeatureClick,
+    camadasNoAr: activeLayers,
+  });
 
   const farmFilter = useFarmFilter(map, activeLayers, config.farmCodeFields);
   const measurement = useMeasurementTool(map);
@@ -129,6 +135,7 @@ export function MapPortal({ config }: { config: ClientConfig }) {
             carregando={mutView.carregando}
             erro={mutView.erro}
             modo={mutView.modo}
+            temElegibilidade={mutView.temElegibilidade}
             onAlternar={handleAlternarMut}
             onModo={mutView.setModo}
           />

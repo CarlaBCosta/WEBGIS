@@ -117,8 +117,22 @@ export interface MutConfigRow {
   nome_fazenda: string;
   safra: string;
   ano_inicial: number;
+  // Ano de referência do MUT (2008 nos projetos ISCC).
+  ano_mut: number;
   ativo: boolean;
   updated_at: string;
+}
+
+// Uma linha do CSV de índices de vegetação (migration 0010): o valor médio de
+// NDVI e EVI daquela classe de uso, naquela fazenda, naquela data.
+export interface MutIndiceRow {
+  id: number;
+  client_id: string;
+  codigo: string;
+  classe: string;
+  data: string;
+  ndvi: number | null;
+  evi: number | null;
 }
 
 // Catálogo de classes de uso do solo com a cor de cada uma.

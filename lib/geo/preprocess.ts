@@ -24,8 +24,23 @@ export type GeoJSONFeature = {
 export type GeoJSONFeatureCollection = {
   type: 'FeatureCollection';
   name?: string;
+  // O QGIS escreve o sistema de coordenadas no próprio arquivo
+  // ("urn:ogc:def:crs:EPSG::31982").
+  crs?: { properties?: { name?: string } };
   features: GeoJSONFeature[];
 };
+
+// Sistema de coordenadas declarado dentro do arquivo, quando houver. É mais
+// confiável que a opção marcada na tela: o arquivo sabe de onde veio.
+export function crsDeclarado(
+  collection: GeoJSONFeatureCollection
+): 'EPSG:31982' | 'EPSG:4326' | null {
+  const nome = collection.crs?.properties?.name;
+  if (!nome) return null;
+  if (/31982/.test(nome)) return 'EPSG:31982';
+  if (/4326|CRS84/i.test(nome)) return 'EPSG:4326';
+  return null;
+}
 
 export interface BBox {
   minX: number;

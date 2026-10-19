@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { preprocessGeoJSON, detectGeometryType, temCoordenadas, type GeoJSONFeatureCollection } from '@/lib/geo/preprocess';
+import {
+  preprocessGeoJSON,
+  detectGeometryType,
+  temCoordenadas,
+  crsDeclarado,
+  type GeoJSONFeatureCollection,
+} from '@/lib/geo/preprocess';
 
 export async function POST(request: NextRequest) {
   const form = await request.formData();
@@ -15,7 +21,8 @@ export async function POST(request: NextRequest) {
   const styleRaw = form.get('style') as string | null;
   const defaultActive = form.get('defaultActive') === 'true';
   const source = (form.get('source') as string | null) || null;
-  const sourceCrs = (form.get('sourceCrs') as string | null) === 'EPSG:31982' ? 'EPSG:31982' : 'EPSG:4326';
+  const crsDoFormulario =
+    (form.get('sourceCrs') as string | null) === 'EPSG:31982' ? 'EPSG:31982' : 'EPSG:4326';
   const toleranceMeters = Number(form.get('toleranceMeters') ?? 5);
 
   if (!file || !slug || !groupId || !layerKey || !label) {
@@ -42,6 +49,10 @@ export async function POST(request: NextRequest) {
   if (clientError || !client) {
     return NextResponse.json({ error: `Cliente "${slug}" não encontrado.` }, { status: 404 });
   }
+
+  // O arquivo manda: exportações do QGIS trazem o CRS dentro do GeoJSON, então
+  // ninguém precisa lembrar de marcar a reprojeção na tela.
+  const sourceCrs = crsDeclarado(parsed) ?? crsDoFormulario;
 
   const { collection, originalCount, keptCount } = preprocessGeoJSON(parsed, {
     sourceCrs,

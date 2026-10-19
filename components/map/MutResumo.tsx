@@ -2,18 +2,29 @@
 
 import type { MutConfig } from '@/lib/types/domain';
 import { COR_ELEGIVEL, COR_INELEGIVEL, formatarHa, type ResumoFazenda } from '@/lib/mut';
+import { MutGrafico } from './MutGrafico';
 
 const SELO = {
   elegivel: { texto: 'Elegível', classe: 'elegivel' },
   parcial: { texto: 'Parcialmente elegível', classe: 'parcial' },
   inelegivel: { texto: 'Inelegível', classe: 'inelegivel' },
+  'sem-info': { texto: 'Elegibilidade não informada', classe: 'sem-info' },
 } as const;
 
 // O quadro da prancha do QGIS: cabeçalho da fazenda, elegibilidade em hectares
 // e a legenda de uso do solo com a área de cada classe. Entra no painel de
 // informações, acima dos atributos do talhão clicado.
-export function MutResumo({ resumo, mut }: { resumo: ResumoFazenda; mut: MutConfig }) {
+export function MutResumo({
+  resumo,
+  mut,
+  clientId,
+}: {
+  resumo: ResumoFazenda;
+  mut: MutConfig;
+  clientId: string;
+}) {
   const selo = SELO[resumo.selo];
+  const semInfo = resumo.selo === 'sem-info';
   const percentual = resumo.areaTotalHa > 0 ? (resumo.areaElegivelHa / resumo.areaTotalHa) * 100 : 0;
 
   return (
@@ -48,18 +59,22 @@ export function MutResumo({ resumo, mut }: { resumo: ResumoFazenda; mut: MutConf
 
       <div className={`mut-selo ${selo.classe}`}>{selo.texto}</div>
 
-      <div className="mut-barra" aria-hidden>
-        <span style={{ width: `${percentual}%`, background: COR_ELEGIVEL }} />
-        <span style={{ width: `${100 - percentual}%`, background: COR_INELEGIVEL }} />
-      </div>
-      <div className="mut-barra-legenda">
-        <span>{formatarHa(resumo.areaElegivelHa)} ha elegíveis</span>
-        <span>{formatarHa(resumo.areaInelegivelHa)} ha inelegíveis</span>
-      </div>
+      {!semInfo && (
+        <>
+          <div className="mut-barra" aria-hidden>
+            <span style={{ width: `${percentual}%`, background: COR_ELEGIVEL }} />
+            <span style={{ width: `${100 - percentual}%`, background: COR_INELEGIVEL }} />
+          </div>
+          <div className="mut-barra-legenda">
+            <span>{formatarHa(resumo.areaElegivelHa)} ha elegíveis</span>
+            <span>{formatarHa(resumo.areaInelegivelHa)} ha inelegíveis</span>
+          </div>
+        </>
+      )}
 
       {resumo.classes.length > 0 && (
         <>
-          <div className="mut-resumo-titulo">Uso do solo</div>
+          <div className="mut-resumo-titulo">Uso do solo em {mut.anoMut}</div>
           <table className="mut-classes">
             <tbody>
               {resumo.classes.map((classe) => (
@@ -75,6 +90,8 @@ export function MutResumo({ resumo, mut }: { resumo: ResumoFazenda; mut: MutConf
           </table>
         </>
       )}
+
+      <MutGrafico codigo={resumo.codigo} clientId={clientId} mut={mut} />
     </div>
   );
 }

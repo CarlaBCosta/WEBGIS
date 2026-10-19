@@ -59,29 +59,33 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Informe o campo do código da fazenda.' }, { status: 400 });
   }
 
-  // Confere contra os atributos reais do arquivo antes de salvar: campo errado
-  // aqui deixaria a visão MUT cinza e sem elegibilidade no portal.
+  // Confere contra os atributos reais do arquivo antes de salvar. Sem o código
+  // da fazenda a visão não funciona — isso é erro. Os demais campos podem
+  // chegar numa exportação futura (a elegibilidade, por exemplo): salva com
+  // aviso, e o portal mostra só o que tem.
   const campos = await lerCamposDaCamada(camada.storage_path, 65536);
+  const ausentes: string[] = [];
   if (campos.length) {
     const existe = (campo: string) => campos.some((c) => c.toUpperCase() === campo.toUpperCase());
-    const faltando = [
-      ['código da fazenda', campoCodigo],
-      ['elegibilidade', campoElegibilidade],
-      ...(campoOpcional(body.campoTalhao) ? [['talhão', texto(body.campoTalhao)]] : []),
-      ...(campoOpcional(body.campoArea) ? [['área', texto(body.campoArea)]] : []),
-      ...(campoOpcional(body.campoUso) ? [['uso do solo', texto(body.campoUso)]] : []),
-    ].filter(([, campo]) => !existe(campo as string));
 
-    if (faltando.length) {
-      const lista = faltando.map(([rotulo, campo]) => `${rotulo} ("${campo}")`).join(', ');
+    if (!existe(campoCodigo)) {
       return NextResponse.json(
         {
           error:
-            `A camada "${camada.label}" não tem ${lista}. ` +
+            `A camada "${camada.label}" não tem o código da fazenda ("${campoCodigo}"). ` +
             `Campos dela: ${campos.join(', ')}.`,
         },
         { status: 400 }
       );
+    }
+
+    for (const [rotulo, campo] of [
+      ['elegibilidade', campoElegibilidade],
+      ['talhão', texto(body.campoTalhao)],
+      ['área', texto(body.campoArea)],
+      ['uso do solo', texto(body.campoUso)],
+    ] as [string, string][]) {
+      if (campo && !existe(campo)) ausentes.push(`${rotulo} ("${campo}")`);
     }
   }
 
@@ -105,6 +109,7 @@ export async function PUT(request: NextRequest) {
         nome_fazenda: texto(body.nomeFazenda),
         safra: texto(body.safra),
         ano_inicial: Number(body.anoInicial) || 2007,
+        ano_mut: Number(body.anoMut) || 2008,
         ativo: body.ativo !== false,
         updated_at: new Date().toISOString(),
       },
@@ -115,10 +120,10 @@ export async function PUT(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  // Avisa quando o uso do solo ainda não existe: a visão funciona, mas só
-  // com a cor de elegibilidade.
+  // Avisa quando falta alguma peça: a visão funciona, mostrando só o que a
+  // camada tem hoje.
   const semUso = !data.campo_uso;
-  return NextResponse.json({ config: data, semUso });
+  return NextResponse.json({ config: data, semUso, ausentes });
 }
 
 export async function DELETE(request: NextRequest) {

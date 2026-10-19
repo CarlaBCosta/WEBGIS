@@ -86,7 +86,7 @@ export function InfoPanel({ selected, onClose, clientId, farmCodeFields, mut, re
           {selected && (
             <>
               <div className="info-title">{selected.layerName.replace(/_/g, ' ')}</div>
-              {mut && resumoMut && <MutResumo resumo={resumoMut} mut={mut} />}
+              {mut && resumoMut && <MutResumo resumo={resumoMut} mut={mut} clientId={clientId} />}
               {videos.length > 0 && (
                 <div className="timelapse-botoes">
                   {videos.map((v) => {

@@ -35,6 +35,7 @@ export interface MutConfig {
   nomeFazenda: string;
   safra: string;
   anoInicial: number;
+  anoMut: number;
   classes: MutClasse[];
 }
 

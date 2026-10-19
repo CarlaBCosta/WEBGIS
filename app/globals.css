@@ -949,3 +949,65 @@ input:checked + .slider:before {
   color: var(--text-muted);
   white-space: nowrap;
 }
+
+/* Gráfico de índice de vegetação no painel da fazenda */
+.mut-grafico {
+  margin-top: 14px;
+}
+
+.mut-grafico-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mut-grafico-topo .mut-resumo-titulo {
+  margin-top: 0;
+}
+
+.mut-modos.pequeno {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 2px;
+}
+
+.mut-modos.pequeno button {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  padding: 3px 9px;
+}
+
+.mut-grafico-svg {
+  width: 100%;
+  height: auto;
+  margin-top: 6px;
+  display: block;
+}
+
+.mut-grafico-eixo {
+  stroke: rgba(255, 255, 255, 0.15);
+  stroke-width: 1;
+}
+
+.mut-grafico-rotulo {
+  fill: var(--text-muted);
+  font-size: 7px;
+}
+
+.mut-grafico-vazio {
+  margin-top: 12px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.mut-legenda.compacta {
+  margin-top: 6px;
+  max-height: none;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+}
+
+.mut-legenda.compacta li {
+  font-size: 11px;
+}

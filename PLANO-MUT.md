@@ -167,30 +167,40 @@ Cada fase é testada no navegador antes de eu te chamar, como combinado.
 
 ## 10. Onde parou (19/10/2026)
 
-**Fase 1 pronta e testada no navegador.**
+**Fase 1 completa, com os dados reais do ATVOS UMV ISCC 2026.**
 
-- Migration `0009_mut.sql` aplicada: `mut_config` e `mut_classes`, com as 9
-  classes da prancha semeadas.
-- Portal: visão MUT ligando e desligando, cor por elegibilidade, dados no hover
-  e o painel da fazenda (cabeçalho, hectares elegíveis/inelegíveis e áreas por
-  classe). Enquanto a camada não tiver o campo de uso do solo, o botão "Uso do
-  Solo" fica travado com um aviso.
-- Painel: card "Visão MUT" (detecta os campos sozinho) e tela "Classes de uso
-  do solo".
-- Cliente TESTE MUT configurado: camada `FAZENDA_410123`, campos `FAZENDA`,
-  `TALHAO`, `AREA` e `ELEG`, nome "Fazenda Teste MUT" e safra 2025/26 — tudo
-  editável no painel.
-- Conferido: 238 talhões, 1.156,80 ha, 1.042,11 ha elegíveis e 114,69 ha
-  inelegíveis; o modo "Uso do Solo" foi testado com um campo simulado (pinta
-  pela classe, mantém o contorno da elegibilidade e soma a área por classe) e a
-  simulação foi desfeita.
-- Nenhum outro cliente mudou: sem `mut_config`, o portal segue igual.
+Cliente novo `atvos-umv-iscc-2026` publicado em `/cliente/atvos-umv-iscc-2026`:
+
+- **Camada MUT**: `MUT_2008_UMV_ISCC_2026.geojson` (65 MB, 3.201 talhões, 116
+  fazendas, EPSG:31982). O envio agora lê o sistema de coordenadas de dentro do
+  arquivo e reprojeta sozinho — ninguém precisa marcar nada na tela. Depois da
+  reprojeção e da simplificação o arquivo publicado tem 3,5 MB.
+- **Campos**: `CODIGO` (fazenda), `TALHAO`, `AREA_MUT` (área do polígono — o
+  `Area` do arquivo é outra coisa e o `AREA_GIS` é a fazenda inteira) e
+  `CLASSE_08` (uso do solo em 2008).
+- **Gráfico**: CSV de índices de vegetação importado pelo painel — 24.628
+  medições, 116 fazendas, 4 classes, de 15/05/2007 a 23/08/2026, com NDVI e EVI.
+- **Conferido no navegador**: hover com fazenda, talhão, área e classe; clique
+  abrindo o painel com área total batendo com o `AREA_GIS` da fazenda
+  (410047: 1.819,04 ha em 217 talhões; 410816: 297,49 ha em 17), áreas por
+  classe somando o total, e o gráfico EVI/NDVI com uma linha por classe. A busca
+  por código também acha os talhões da visão MUT.
+
+**Elegibilidade ainda não entrou**: o MUT_2008 não traz o campo. Enquanto não
+vier, a visão abre no modo "Uso do Solo", o botão "Elegibilidade" fica travado
+com o aviso, nada é pintado de vermelho e o painel diz "Elegibilidade não
+informada". Quando o GeoJSON novo chegar com o campo (`ELEG`, valores
+`ELEGÍVEL`/`INELEGÍVEL`), é só reenviar a camada: o resto já está configurado.
+
+O cliente TESTE MUT continua como estava, com a fazenda 410123 e o campo `ELEG`,
+servindo de comparação do modo elegibilidade.
 
 ## 11. Próximos passos
 
-1. **GeoJSON MUT com o uso do solo** (Carla): basta apontar o campo no card do
-   cliente; o botão "Uso do Solo" liga sozinho. Conferir se os nomes das
-   classes batem com a tela "Classes de uso do solo".
+1. **GeoJSON com o campo de elegibilidade** (Carla) — reenviar a camada pelo
+   painel; nada mais precisa ser configurado.
 2. **Fase 2 — timelapse**: imagens anuais 2007→hoje no robô, barra de anos no
    mapa e comparador antes/depois.
-3. **Gráfico**: esperando o Excel.
+3. Conferir na tela "Classes de uso do solo" se as cores das quatro classes que
+   aparecem nesse projeto (Pastagem Plantada, Lavoura de Grãos, Vegetação Nativa
+   e Formação Campestre) são as que a equipe usa nas pranchas.

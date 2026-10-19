@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { MutConfigRow } from '@/lib/types/database';
 import type { CamposMut } from '@/lib/mut';
@@ -10,6 +10,8 @@ interface MutCardProps {
   clientId: string;
   layers: { layer_key: string; label: string }[];
   config: MutConfigRow | null;
+  // Quantas linhas do CSV de índices de vegetação já foram importadas.
+  linhasIndices: number;
   // Camada e campos identificados pelo servidor no arquivo enviado.
   sugestao: { layerKey: string; campos: string[]; detectado: CamposMut } | null;
 }
@@ -29,6 +31,7 @@ type Rascunho = {
   nomeFazenda: string;
   safra: string;
   anoInicial: string;
+  anoMut: string;
   ativo: boolean;
 };
 
@@ -45,6 +48,7 @@ function inicial(config: MutConfigRow | null, sugestao: MutCardProps['sugestao']
       nomeFazenda: config.nome_fazenda,
       safra: config.safra,
       anoInicial: String(config.ano_inicial),
+      anoMut: String(config.ano_mut ?? 2008),
       ativo: config.ativo,
     };
   }
@@ -60,11 +64,12 @@ function inicial(config: MutConfigRow | null, sugestao: MutCardProps['sugestao']
     nomeFazenda: '',
     safra: '',
     anoInicial: '2007',
+    anoMut: '2008',
     ativo: true,
   };
 }
 
-export function MutCard({ clientId, layers, config, sugestao }: MutCardProps) {
+export function MutCard({ clientId, layers, config, sugestao, linhasIndices }: MutCardProps) {
   const router = useRouter();
   const [form, setForm] = useState<Rascunho>(() => inicial(config, sugestao));
   const [campos, setCampos] = useState<string[]>(sugestao?.campos ?? []);
@@ -72,6 +77,55 @@ export function MutCard({ clientId, layers, config, sugestao }: MutCardProps) {
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [salvo, setSalvo] = useState(false);
+
+  // Importação do CSV de índices de vegetação (o gráfico do painel da fazenda).
+  const arquivoRef = useRef<HTMLInputElement>(null);
+  // Contagem vinda do servidor, substituída pela local depois de importar.
+  const [linhasLocal, setLinhasLocal] = useState<number | null>(null);
+  const linhas = linhasLocal ?? linhasIndices;
+  const [importando, setImportando] = useState(false);
+  const [resultadoCsv, setResultadoCsv] = useState('');
+  const [erroCsv, setErroCsv] = useState('');
+
+  const contarIndices = useCallback(async () => {
+    const res = await fetch(`/api/admin/mut-indices?clientId=${clientId}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const body = await res.json();
+    setLinhasLocal(body.linhas ?? 0);
+  }, [clientId]);
+
+  async function importarCsv(arquivo: File) {
+    setImportando(true);
+    setErroCsv('');
+    setResultadoCsv('');
+    const corpo = new FormData();
+    corpo.set('file', arquivo);
+    corpo.set('clientId', clientId);
+    const res = await fetch('/api/admin/mut-indices', { method: 'POST', body: corpo });
+    setImportando(false);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setErroCsv(body.error || 'Não foi possível importar o arquivo.');
+      return;
+    }
+    setResultadoCsv(
+      `${body.linhas.toLocaleString('pt-BR')} linhas de ${body.fazendas} fazendas e ${body.classes} classes.` +
+        (body.ignoradas ? ` ${body.ignoradas} linhas ignoradas (sem data ou sem fazenda).` : '')
+    );
+    contarIndices();
+  }
+
+  async function removerIndices() {
+    setImportando(true);
+    await fetch('/api/admin/mut-indices', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId }),
+    });
+    setImportando(false);
+    setResultadoCsv('');
+    contarIndices();
+  }
 
   const mudar = (parcial: Partial<Rascunho>) => setForm((f) => ({ ...f, ...parcial }));
 
@@ -106,7 +160,12 @@ export function MutCard({ clientId, layers, config, sugestao }: MutCardProps) {
     const res = await fetch('/api/admin/mut', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId, ...form, anoInicial: Number(form.anoInicial) }),
+      body: JSON.stringify({
+        clientId,
+        ...form,
+        anoInicial: Number(form.anoInicial),
+        anoMut: Number(form.anoMut),
+      }),
     });
     setSalvando(false);
     const body = await res.json().catch(() => ({}));
@@ -115,11 +174,18 @@ export function MutCard({ clientId, layers, config, sugestao }: MutCardProps) {
       return;
     }
     setSalvo(true);
-    if (body.semUso) {
-      setAviso(
-        'Salvo. A camada ainda não tem o campo de uso do solo: no portal a visão MUT vai mostrar só a elegibilidade.'
+    const avisos: string[] = [];
+    if (Array.isArray(body.ausentes) && body.ausentes.length > 0) {
+      avisos.push(
+        `A camada ainda não tem: ${body.ausentes.join(', ')}. O portal mostra só o que existe hoje; ` +
+          'reenvie a camada com esses campos quando tiver.'
+      );
+    } else if (body.semUso) {
+      avisos.push(
+        'A camada ainda não tem o campo de uso do solo: no portal a visão MUT vai mostrar só a elegibilidade.'
       );
     }
+    if (avisos.length) setAviso(`Salvo. ${avisos.join(' ')}`);
     router.refresh();
   }
 
@@ -234,6 +300,17 @@ export function MutCard({ clientId, layers, config, sugestao }: MutCardProps) {
               />
             </label>
             <label className="block min-w-0">
+              <span className="mb-1 block text-xs text-zinc-500">Ano de referência do MUT</span>
+              <input
+                type="number"
+                min={1985}
+                max={new Date().getFullYear()}
+                value={form.anoMut}
+                onChange={(e) => mudar({ anoMut: e.target.value })}
+                className={inputClass}
+              />
+            </label>
+            <label className="block min-w-0">
               <span className="mb-1 block text-xs text-zinc-500">Ano inicial do timelapse</span>
               <input
                 type="number"
@@ -285,6 +362,49 @@ export function MutCard({ clientId, layers, config, sugestao }: MutCardProps) {
               classificados e confira os campos.
             </p>
           )}
+
+          <div className="mt-6 border-t border-white/10 pt-5">
+            <h3 className="text-sm font-semibold text-zinc-200">Gráfico de índices de vegetação</h3>
+            <p className="mt-0.5 text-sm text-zinc-500">
+              CSV exportado do QGIS com uma linha por fazenda, classe de uso e data (FAZENDA, CLASSE_08,
+              Data_Fmt, NDVI, EVI). Cada importação substitui a anterior.
+            </p>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <input
+                ref={arquivoRef}
+                type="file"
+                accept=".csv,text/csv"
+                disabled={importando}
+                onChange={(e) => {
+                  const arquivo = e.target.files?.[0];
+                  if (arquivo) importarCsv(arquivo);
+                  e.target.value = '';
+                }}
+                className="block w-full max-w-sm text-sm text-zinc-400 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-lime-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-zinc-950 hover:file:bg-lime-400 disabled:opacity-50"
+              />
+              {linhas > 0 && (
+                <button
+                  type="button"
+                  onClick={removerIndices}
+                  disabled={importando}
+                  className="text-xs text-zinc-500 hover:text-red-400"
+                >
+                  remover dados do gráfico
+                </button>
+              )}
+            </div>
+
+            <p className="mt-2 text-xs text-zinc-500">
+              {importando
+                ? 'Importando...'
+                : linhas > 0
+                  ? `${linhas.toLocaleString('pt-BR')} medições no banco.`
+                  : 'Nenhum dado importado ainda — o painel da fazenda fica sem o gráfico.'}
+            </p>
+            {resultadoCsv && <p className="mt-1 text-sm text-lime-300">Importado: {resultadoCsv}</p>}
+            {erroCsv && <p className="mt-1 text-sm text-red-400">{erroCsv}</p>}
+          </div>
         </>
       )}
     </section>

@@ -10,15 +10,26 @@ interface MutControlProps {
   carregando: boolean;
   erro: string;
   modo: ModoCorMut;
+  // false quando a camada não traz o campo de elegibilidade preenchido.
+  temElegibilidade: boolean;
   onAlternar: () => void;
   onModo: (modo: ModoCorMut) => void;
 }
 
 // Liga/desliga a visão MUT, escolhe o modo de cor e mostra a legenda
 // correspondente. Fica no topo do painel de camadas.
-export function MutControl({ mut, ativo, carregando, erro, modo, onAlternar, onModo }: MutControlProps) {
+export function MutControl({
+  mut,
+  ativo,
+  carregando,
+  erro,
+  modo,
+  temElegibilidade,
+  onAlternar,
+  onModo,
+}: MutControlProps) {
   const temUso = !!mut.campoUso;
-  const modoAtual: ModoCorMut = temUso ? modo : 'elegibilidade';
+  const modoAtual: ModoCorMut = temUso && (modo === 'uso' || !temElegibilidade) ? 'uso' : 'elegibilidade';
 
   return (
     <div className={`mut-control${ativo ? ' ativo' : ''}`}>
@@ -43,7 +54,9 @@ export function MutControl({ mut, ativo, carregando, erro, modo, onAlternar, onM
             <button
               type="button"
               className={modoAtual === 'elegibilidade' ? 'ativo' : ''}
-              onClick={() => onModo('elegibilidade')}
+              onClick={() => temElegibilidade && onModo('elegibilidade')}
+              disabled={!temElegibilidade}
+              title={temElegibilidade ? undefined : 'Esta camada ainda não tem o campo de elegibilidade.'}
             >
               Elegibilidade
             </button>
@@ -61,6 +74,11 @@ export function MutControl({ mut, ativo, carregando, erro, modo, onAlternar, onM
           {!temUso && (
             <p className="mut-aviso">
               A camada não tem o campo de uso do solo; por enquanto só a elegibilidade é exibida.
+            </p>
+          )}
+          {temUso && !temElegibilidade && (
+            <p className="mut-aviso">
+              A camada não tem o campo de elegibilidade; por enquanto só o uso do solo é exibido.
             </p>
           )}
 

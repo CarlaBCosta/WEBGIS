@@ -20,7 +20,7 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
 
   if (!client) notFound();
 
-  const [{ data: layers }, tiposProjeto, { data: mutConfig }] = await Promise.all([
+  const [{ data: layers }, tiposProjeto, { data: mutConfig }, { count: linhasIndices }] = await Promise.all([
     supabaseAdmin
       .from('layers')
       .select('layer_key, label, storage_path')
@@ -29,6 +29,10 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
       .order('label', { ascending: true }),
     carregarTiposProjeto(),
     supabaseAdmin.from('mut_config').select('*').eq('client_id', client.id).maybeSingle<MutConfigRow>(),
+    supabaseAdmin
+      .from('mut_indices')
+      .select('*', { count: 'exact', head: true })
+      .eq('client_id', client.id),
   ]);
   const [sugestao, sugestaoMut] = await Promise.all([
     sugerirFazendas(layers ?? [], client.farm_code_fields ?? []),
@@ -58,6 +62,7 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
         layers={(layers ?? []).map(({ layer_key, label }) => ({ layer_key, label }))}
         config={mutConfig ?? null}
         sugestao={sugestaoMut}
+        linhasIndices={linhasIndices ?? 0}
       />
       <ClientForm
         initial={client}
