@@ -165,19 +165,32 @@ Cada fase é testada no navegador antes de eu te chamar, como combinado.
    classificado; até lá o campo fica em branco e a visão mostra só a
    elegibilidade.
 
-## 10. Onde parou (16/10/2026)
+## 10. Onde parou (19/10/2026)
 
-Fase 1 construída e com verificação pela metade:
+**Fase 1 pronta e testada no navegador.**
 
-- Migration `0009_mut.sql` **aplicada** no Supabase: tabelas `mut_config` e
-  `mut_classes`, com as 9 classes da prancha semeadas e leitura pública.
-- Portal: visão MUT com os dois modos de cor, hover e resumo da fazenda
-  (cabeçalho, elegibilidade em hectares e áreas por classe).
-- Painel: card "Visão MUT" na página do cliente (detecta os campos sozinho) e
-  tela "Classes de uso do solo" na barra lateral.
-- TypeScript e ESLint limpos.
+- Migration `0009_mut.sql` aplicada: `mut_config` e `mut_classes`, com as 9
+  classes da prancha semeadas.
+- Portal: visão MUT ligando e desligando, cor por elegibilidade, dados no hover
+  e o painel da fazenda (cabeçalho, hectares elegíveis/inelegíveis e áreas por
+  classe). Enquanto a camada não tiver o campo de uso do solo, o botão "Uso do
+  Solo" fica travado com um aviso.
+- Painel: card "Visão MUT" (detecta os campos sozinho) e tela "Classes de uso
+  do solo".
+- Cliente TESTE MUT configurado: camada `FAZENDA_410123`, campos `FAZENDA`,
+  `TALHAO`, `AREA` e `ELEG`, nome "Fazenda Teste MUT" e safra 2025/26 — tudo
+  editável no painel.
+- Conferido: 238 talhões, 1.156,80 ha, 1.042,11 ha elegíveis e 114,69 ha
+  inelegíveis; o modo "Uso do Solo" foi testado com um campo simulado (pinta
+  pela classe, mantém o contorno da elegibilidade e soma a área por classe) e a
+  simulação foi desfeita.
+- Nenhum outro cliente mudou: sem `mut_config`, o portal segue igual.
 
-**Falta testar** (próximo passo): salvar a configuração MUT do cliente TESTE MUT
-pelo painel e conferir no portal a cor, o hover e o painel da fazenda. Nenhum
-cliente foi alterado ainda — sem `mut_config` salvo, o portal segue exatamente
-como estava.
+## 11. Próximos passos
+
+1. **GeoJSON MUT com o uso do solo** (Carla): basta apontar o campo no card do
+   cliente; o botão "Uso do Solo" liga sozinho. Conferir se os nomes das
+   classes batem com a tela "Classes de uso do solo".
+2. **Fase 2 — timelapse**: imagens anuais 2007→hoje no robô, barra de anos no
+   mapa e comparador antes/depois.
+3. **Gráfico**: esperando o Excel.

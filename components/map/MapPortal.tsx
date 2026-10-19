@@ -99,6 +99,11 @@ export function MapPortal({ config }: { config: ClientConfig }) {
     if (!mutView.ativo && config.mut && visible[config.mut.layerKey]) {
       toggleLayer(config.mut.layerKey, farmFilter.reapplyToLayer);
     }
+    // Ao desligar, o painel de informações não pode continuar mostrando o
+    // talhão que acabou de sair do mapa.
+    if (mutView.ativo && featureInfo.selected?.layerName === config.mut?.layerKey) {
+      featureInfo.close();
+    }
     mutView.alternar();
   };
 
