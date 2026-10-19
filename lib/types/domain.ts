@@ -22,6 +22,20 @@ export interface LayerGroupConfig {
 export interface MutClasse {
   nome: string;
   cor: string;
+  // Coluna do Atlas que guarda a área desta classe na fazenda (ex.: CANA08).
+  campoAtlas: string | null;
+}
+
+// Camada das fazendas (Atlas): um polígono por fazenda, com a elegibilidade e
+// os dados do cabeçalho da prancha.
+export interface MutFazendasConfig {
+  layerKey: string;
+  campoCodigo: string;
+  campoNome: string | null;
+  campoArea: string | null;
+  campoPeriodo: string | null;
+  campoLatLong: string | null;
+  campoElegibilidade: string | null;
 }
 
 export interface MutConfig {
@@ -37,6 +51,8 @@ export interface MutConfig {
   anoInicial: number;
   anoMut: number;
   classes: MutClasse[];
+  // null quando o cliente ainda não tem a camada das fazendas.
+  fazendas: MutFazendasConfig | null;
 }
 
 export interface ClientConfig {

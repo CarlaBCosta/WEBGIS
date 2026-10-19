@@ -56,10 +56,29 @@ export type Elegibilidade = 'elegivel' | 'inelegivel' | 'desconhecida';
 
 // Tri-estado: camada sem o campo de elegibilidade (ou com o campo vazio) não
 // pode ser pintada de vermelho — isso diria que a área é inelegível.
-export function elegibilidadeDaFeicao(feature: GeoJSON.Feature, mut: MutConfig): Elegibilidade {
-  const bruto = valorDoCampo(feature.properties as Record<string, unknown>, mut.campoElegibilidade);
+//
+// Com a camada das fazendas (Atlas) configurada, quem decide é a fazenda: é
+// assim que a certificação avalia, a fazenda inteira é elegível ou não.
+export function elegibilidadeDaFeicao(
+  feature: GeoJSON.Feature,
+  mut: MutConfig,
+  fazendas?: IndiceFazendas
+): Elegibilidade {
+  const campoFazenda = mut.fazendas?.campoElegibilidade;
+  if (fazendas && campoFazenda) {
+    const codigo = codigoDaFeicao(feature, mut.campoCodigo);
+    const dados = fazendas.get(codigo);
+    if (dados) return situacao(valorDoCampo(dados, campoFazenda), mut.valoresElegivel);
+  }
+  return situacao(
+    valorDoCampo(feature.properties as Record<string, unknown>, mut.campoElegibilidade),
+    mut.valoresElegivel
+  );
+}
+
+function situacao(bruto: unknown, valoresElegivel: string[]): Elegibilidade {
   if (bruto === undefined || bruto === null || String(bruto).trim() === '') return 'desconhecida';
-  return ehElegivel(bruto, mut.valoresElegivel) ? 'elegivel' : 'inelegivel';
+  return ehElegivel(bruto, valoresElegivel) ? 'elegivel' : 'inelegivel';
 }
 
 export function ehElegivel(valor: unknown, valoresElegivel: string[]): boolean {
@@ -95,6 +114,10 @@ export interface ResumoClasse {
 
 export interface ResumoFazenda {
   codigo: string;
+  // Dados do cabeçalho, quando a camada das fazendas (Atlas) está configurada.
+  nome: string;
+  periodo: string;
+  municipio: string;
   talhoes: number;
   areaTotalHa: number;
   areaElegivelHa: number;
@@ -114,6 +137,21 @@ export function nomeDeExibicaoDaClasse(classes: { nome: string }[], nome: unknow
   return achada ? achada.nome : rotuloDaClasse(nome) || 'Sem classificação';
 }
 
+// Índice código da fazenda -> atributos da feição do Atlas.
+export type IndiceFazendas = Map<string, Record<string, unknown>>;
+
+export function indexarFazendas(
+  features: GeoJSON.Feature[],
+  campoCodigo: string
+): IndiceFazendas {
+  const indice: IndiceFazendas = new Map();
+  for (const f of features) {
+    const codigo = codigoDaFeicao(f, campoCodigo);
+    if (codigo) indice.set(codigo, (f.properties ?? {}) as Record<string, unknown>);
+  }
+  return indice;
+}
+
 export function corDaClasse(classes: { nome: string; cor: string }[], nome: unknown): string {
   const alvo = normalizarClasse(nome);
   if (!alvo) return COR_SEM_CLASSE;
@@ -124,10 +162,11 @@ export function corDaClasse(classes: { nome: string; cor: string }[], nome: unkn
 export function corDaFeicao(
   feature: GeoJSON.Feature,
   mut: MutConfig,
-  modo: 'elegibilidade' | 'uso'
+  modo: 'elegibilidade' | 'uso',
+  fazendas?: IndiceFazendas
 ): { contorno: string; preenchimento: string } {
   const props = feature.properties as Record<string, unknown>;
-  const situacao = elegibilidadeDaFeicao(feature, mut);
+  const situacao = elegibilidadeDaFeicao(feature, mut, fazendas);
   const contorno =
     situacao === 'elegivel' ? COR_ELEGIVEL : situacao === 'inelegivel' ? COR_INELEGIVEL : COR_SEM_INFO;
   if (modo === 'elegibilidade' || !mut.campoUso) {
@@ -145,9 +184,11 @@ export function corDaFeicao(
 export function resumirFazenda(
   features: GeoJSON.Feature[],
   mut: MutConfig,
-  codigo: string
+  codigo: string,
+  fazendas?: IndiceFazendas
 ): ResumoFazenda {
   const daFazenda = features.filter((f) => codigoDaFeicao(f, mut.campoCodigo) === codigo);
+  const atlas = fazendas?.get(codigo);
 
   let areaTotalHa = 0;
   let areaElegivelHa = 0;
@@ -177,6 +218,33 @@ export function resumirFazenda(
     });
   }
 
+  // Com o Atlas, a área total e as áreas por classe saem de lá: são os números
+  // da prancha, e eles fecham exatamente com a área da fazenda.
+  if (atlas) {
+    const areaAtlas = Number(valorDoCampo(atlas, mut.fazendas?.campoArea ?? '') ?? NaN);
+    const porClasseAtlas = new Map<string, number>();
+    for (const classe of mut.classes) {
+      if (!classe.campoAtlas) continue;
+      const ha = Number(valorDoCampo(atlas, classe.campoAtlas) ?? 0);
+      if (Number.isFinite(ha) && ha > 0) porClasseAtlas.set(classe.nome, ha);
+    }
+    if (porClasseAtlas.size > 0) {
+      porClasse.clear();
+      for (const [nome, ha] of porClasseAtlas) porClasse.set(nome, ha);
+    }
+    if (Number.isFinite(areaAtlas) && areaAtlas > 0) {
+      areaTotalHa = areaAtlas;
+    } else if (porClasseAtlas.size > 0) {
+      areaTotalHa = [...porClasseAtlas.values()].reduce((a, b) => a + b, 0);
+    }
+    const situacaoFazenda = situacao(
+      valorDoCampo(atlas, mut.fazendas?.campoElegibilidade ?? ''),
+      mut.valoresElegivel
+    );
+    areaElegivelHa = situacaoFazenda === 'elegivel' ? areaTotalHa : 0;
+    areaSemInfoHa = situacaoFazenda === 'desconhecida' ? areaTotalHa : 0;
+  }
+
   const areaInelegivelHa = Math.max(areaTotalHa - areaElegivelHa - areaSemInfoHa, 0);
   const selo: ResumoFazenda['selo'] =
     areaElegivelHa <= 0.0005 && areaInelegivelHa <= 0.0005
@@ -197,8 +265,17 @@ export function resumirFazenda(
         b.areaHa - a.areaHa
     );
 
+  const latlong = String(valorDoCampo(atlas, mut.fazendas?.campoLatLong ?? '') ?? '')
+    .split(',')
+    .map((n) => Number(n.trim()));
+
   return {
     codigo,
+    nome: String(valorDoCampo(atlas, mut.fazendas?.campoNome ?? '') ?? ''),
+    periodo: String(valorDoCampo(atlas, mut.fazendas?.campoPeriodo ?? '') ?? ''),
+    municipio: [valorDoCampo(atlas, 'Municipio'), valorDoCampo(atlas, 'Estado')]
+      .filter(Boolean)
+      .join(' / '),
     talhoes: daFazenda.length,
     areaTotalHa,
     areaElegivelHa,
@@ -207,7 +284,11 @@ export function resumirFazenda(
     selo,
     classes,
     centro:
-      minLat === Infinity ? null : { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 },
+      latlong.length === 2 && latlong.every(Number.isFinite)
+        ? { lat: latlong[0], lng: latlong[1] }
+        : minLat === Infinity
+          ? null
+          : { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 },
   };
 }
 
@@ -242,6 +323,48 @@ const PISTAS = {
 } as const;
 
 export type CamposMut = { [K in keyof typeof PISTAS]: string | null };
+
+const PISTAS_FAZENDA = {
+  codigo: ['CHAVE_AMB', 'CODIGO', 'FAZENDA', 'COD_FAZENDA'],
+  nome: ['NOME_FAZ', 'NOME_FAZENDA', 'NOME', 'FAZENDA_NOME'],
+  area: ['AREA', 'AREA_HA', 'AREA_TOTAL'],
+  periodo: ['PERIODO', 'SAFRA'],
+  latlong: ['LATLONG', 'LAT_LONG', 'COORDENADAS'],
+  elegibilidade: ['ELEGIB', 'ELEG', 'ELEGIBILIDADE', 'ELEGIVEL'],
+} as const;
+
+export type CamposFazenda = { [K in keyof typeof PISTAS_FAZENDA]: string | null };
+
+// Qual campo da camada das fazendas (Atlas) corresponde a cada informação.
+export function detectarCamposFazenda(campos: string[]): CamposFazenda {
+  const achar = (pistas: readonly string[]) => {
+    const normalizados = campos.map((c) => ({ campo: c, chave: normalizarTexto(c) }));
+    for (const pista of pistas) {
+      const exato = normalizados.find((c) => c.chave === normalizarTexto(pista));
+      if (exato) return exato.campo;
+    }
+    for (const pista of pistas) {
+      const parcial = normalizados.find((c) => c.chave.includes(normalizarTexto(pista)));
+      if (parcial) return parcial.campo;
+    }
+    return null;
+  };
+  return {
+    codigo: achar(PISTAS_FAZENDA.codigo),
+    nome: achar(PISTAS_FAZENDA.nome),
+    area: achar(PISTAS_FAZENDA.area),
+    periodo: achar(PISTAS_FAZENDA.periodo),
+    latlong: achar(PISTAS_FAZENDA.latlong),
+    elegibilidade: achar(PISTAS_FAZENDA.elegibilidade),
+  };
+}
+
+// A camada tem cara de Atlas (uma feição por fazenda)? Precisa do código e do
+// nome ou da elegibilidade.
+export function pareceCamadaFazendas(campos: string[]): boolean {
+  const d = detectarCamposFazenda(campos);
+  return !!d.codigo && (!!d.nome || !!d.elegibilidade);
+}
 
 // Qual campo do arquivo corresponde a cada informação da visão MUT.
 export function detectarCamposMut(campos: string[]): CamposMut {

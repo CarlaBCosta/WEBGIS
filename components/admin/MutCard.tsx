@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { MutConfigRow } from '@/lib/types/database';
-import type { CamposMut } from '@/lib/mut';
+import type { CamposFazenda, CamposMut } from '@/lib/mut';
 import { VALORES_ELEGIVEL_PADRAO } from '@/lib/mut';
 
 interface MutCardProps {
@@ -14,6 +14,8 @@ interface MutCardProps {
   linhasIndices: number;
   // Camada e campos identificados pelo servidor no arquivo enviado.
   sugestao: { layerKey: string; campos: string[]; detectado: CamposMut } | null;
+  // Camada das fazendas (Atlas) identificada pelo servidor.
+  sugestaoAtlas: { layerKey: string; campos: string[]; detectado: CamposFazenda } | null;
 }
 
 const inputClass =
@@ -33,9 +35,20 @@ type Rascunho = {
   anoInicial: string;
   anoMut: string;
   ativo: boolean;
+  layerFazendas: string;
+  campoCodigoFazenda: string;
+  campoNome: string;
+  campoAreaFazenda: string;
+  campoPeriodo: string;
+  campoLatLong: string;
+  campoElegibilidadeFazenda: string;
 };
 
-function inicial(config: MutConfigRow | null, sugestao: MutCardProps['sugestao']): Rascunho {
+function inicial(
+  config: MutConfigRow | null,
+  sugestao: MutCardProps['sugestao'],
+  atlas: MutCardProps['sugestaoAtlas']
+): Rascunho {
   if (config) {
     return {
       layerKey: config.layer_key,
@@ -50,6 +63,14 @@ function inicial(config: MutConfigRow | null, sugestao: MutCardProps['sugestao']
       anoInicial: String(config.ano_inicial),
       anoMut: String(config.ano_mut ?? 2008),
       ativo: config.ativo,
+      layerFazendas: config.layer_fazendas ?? atlas?.layerKey ?? '',
+      campoCodigoFazenda: config.campo_codigo_fazenda ?? atlas?.detectado.codigo ?? '',
+      campoNome: config.campo_nome ?? atlas?.detectado.nome ?? '',
+      campoAreaFazenda: config.campo_area_fazenda ?? atlas?.detectado.area ?? '',
+      campoPeriodo: config.campo_periodo ?? atlas?.detectado.periodo ?? '',
+      campoLatLong: config.campo_latlong ?? atlas?.detectado.latlong ?? '',
+      campoElegibilidadeFazenda:
+        config.campo_elegibilidade_fazenda ?? atlas?.detectado.elegibilidade ?? '',
     };
   }
   const d = sugestao?.detectado;
@@ -66,13 +87,28 @@ function inicial(config: MutConfigRow | null, sugestao: MutCardProps['sugestao']
     anoInicial: '2007',
     anoMut: '2008',
     ativo: true,
+    layerFazendas: atlas?.layerKey ?? '',
+    campoCodigoFazenda: atlas?.detectado.codigo ?? '',
+    campoNome: atlas?.detectado.nome ?? '',
+    campoAreaFazenda: atlas?.detectado.area ?? '',
+    campoPeriodo: atlas?.detectado.periodo ?? '',
+    campoLatLong: atlas?.detectado.latlong ?? '',
+    campoElegibilidadeFazenda: atlas?.detectado.elegibilidade ?? '',
   };
 }
 
-export function MutCard({ clientId, layers, config, sugestao, linhasIndices }: MutCardProps) {
+export function MutCard({
+  clientId,
+  layers,
+  config,
+  sugestao,
+  sugestaoAtlas,
+  linhasIndices,
+}: MutCardProps) {
   const router = useRouter();
-  const [form, setForm] = useState<Rascunho>(() => inicial(config, sugestao));
+  const [form, setForm] = useState<Rascunho>(() => inicial(config, sugestao, sugestaoAtlas));
   const [campos, setCampos] = useState<string[]>(sugestao?.campos ?? []);
+  const [camposAtlas, setCamposAtlas] = useState<string[]>(sugestaoAtlas?.campos ?? []);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
@@ -152,6 +188,42 @@ export function MutCard({ clientId, layers, config, sugestao, linhasIndices }: M
     });
   }
 
+  // Ao trocar a camada das fazendas, relê os atributos e repreenche os campos.
+  async function trocarAtlas(layerKey: string) {
+    mudar({ layerFazendas: layerKey });
+    setErro('');
+    setSalvo(false);
+    if (!layerKey) {
+      setCamposAtlas([]);
+      mudar({
+        campoCodigoFazenda: '',
+        campoNome: '',
+        campoAreaFazenda: '',
+        campoPeriodo: '',
+        campoLatLong: '',
+        campoElegibilidadeFazenda: '',
+      });
+      return;
+    }
+    const res = await fetch('/api/admin/mut', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, layerKey, tipo: 'fazendas' }),
+    });
+    if (!res.ok) return;
+    const body = await res.json();
+    setCamposAtlas(body.campos ?? []);
+    const d: CamposFazenda = body.detectado ?? {};
+    mudar({
+      campoCodigoFazenda: d.codigo ?? '',
+      campoNome: d.nome ?? '',
+      campoAreaFazenda: d.area ?? '',
+      campoPeriodo: d.periodo ?? '',
+      campoLatLong: d.latlong ?? '',
+      campoElegibilidadeFazenda: d.elegibilidade ?? '',
+    });
+  }
+
   async function salvar() {
     setSalvando(true);
     setErro('');
@@ -197,7 +269,7 @@ export function MutCard({ clientId, layers, config, sugestao, linhasIndices }: M
       body: JSON.stringify({ clientId }),
     });
     setSalvando(false);
-    setForm(inicial(null, sugestao));
+    setForm(inicial(null, sugestao, sugestaoAtlas));
     setSalvo(false);
     router.refresh();
   }
@@ -208,8 +280,10 @@ export function MutCard({ clientId, layers, config, sugestao, linhasIndices }: M
     rotulo: string,
     chave: keyof Rascunho,
     opcional = false,
-    placeholder?: string
+    placeholder?: string,
+    lista = 'campos-mut'
   ) {
+    const temLista = lista === 'campos-mut' ? !!listaCampos : camposAtlas.length > 0;
     return (
       <label className="block min-w-0">
         <span className="mb-1 block text-xs text-zinc-500">
@@ -217,7 +291,7 @@ export function MutCard({ clientId, layers, config, sugestao, linhasIndices }: M
           {opcional && <span className="text-zinc-600"> (opcional)</span>}
         </span>
         <input
-          list={listaCampos ? 'campos-mut' : undefined}
+          list={temLista ? lista : undefined}
           value={String(form[chave])}
           onChange={(e) => mudar({ [chave]: e.target.value } as Partial<Rascunho>)}
           placeholder={placeholder}
@@ -244,6 +318,13 @@ export function MutCard({ clientId, layers, config, sugestao, linhasIndices }: M
           {listaCampos && (
             <datalist id="campos-mut">
               {listaCampos.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          )}
+          {camposAtlas.length > 0 && (
+            <datalist id="campos-atlas">
+              {camposAtlas.map((c) => (
                 <option key={c} value={c} />
               ))}
             </datalist>
@@ -330,6 +411,42 @@ export function MutCard({ clientId, layers, config, sugestao, linhasIndices }: M
               />
               Mostrar a visão MUT no portal
             </label>
+          </div>
+
+          <div className="mt-6 border-t border-white/10 pt-5">
+            <h3 className="text-sm font-semibold text-zinc-200">Camada das fazendas (Atlas)</h3>
+            <p className="mt-0.5 mb-3 text-sm text-zinc-500">
+              Um polígono por fazenda. É dela que saem a elegibilidade, o nome, o período e as coordenadas
+              que aparecem no cabeçalho do painel. Sem ela, a visão mostra só o uso do solo dos talhões.
+            </p>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block min-w-0 sm:col-span-2">
+                <span className="mb-1 block text-xs text-zinc-500">Camada</span>
+                <select
+                  value={form.layerFazendas}
+                  onChange={(e) => trocarAtlas(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Sem camada de fazendas</option>
+                  {layers.map((l) => (
+                    <option key={l.layer_key} value={l.layer_key}>
+                      {l.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {form.layerFazendas && (
+                <>
+                  {campoTexto('Campo do código', 'campoCodigoFazenda', false, 'CHAVE_AMB', 'campos-atlas')}
+                  {campoTexto('Campo da elegibilidade', 'campoElegibilidadeFazenda', false, 'ELEGIB', 'campos-atlas')}
+                  {campoTexto('Campo do nome da fazenda', 'campoNome', true, 'NOME_FAZ', 'campos-atlas')}
+                  {campoTexto('Campo da área (ha)', 'campoAreaFazenda', true, 'AREA', 'campos-atlas')}
+                  {campoTexto('Campo do período/safra', 'campoPeriodo', true, 'PERIODO', 'campos-atlas')}
+                  {campoTexto('Campo das coordenadas', 'campoLatLong', true, 'LATLONG', 'campos-atlas')}
+                </>
+              )}
+            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">

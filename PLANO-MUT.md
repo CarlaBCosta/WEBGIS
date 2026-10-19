@@ -167,40 +167,49 @@ Cada fase é testada no navegador antes de eu te chamar, como combinado.
 
 ## 10. Onde parou (19/10/2026)
 
-**Fase 1 completa, com os dados reais do ATVOS UMV ISCC 2026.**
+**Fase 1 completa, com os três arquivos reais do ATVOS UMV ISCC 2026.**
 
-Cliente novo `atvos-umv-iscc-2026` publicado em `/cliente/atvos-umv-iscc-2026`:
+O projeto sai do QGIS em duas camadas que se completam, e o portal usa as duas:
 
-- **Camada MUT**: `MUT_2008_UMV_ISCC_2026.geojson` (65 MB, 3.201 talhões, 116
-  fazendas, EPSG:31982). O envio agora lê o sistema de coordenadas de dentro do
-  arquivo e reprojeta sozinho — ninguém precisa marcar nada na tela. Depois da
-  reprojeção e da simplificação o arquivo publicado tem 3,5 MB.
-- **Campos**: `CODIGO` (fazenda), `TALHAO`, `AREA_MUT` (área do polígono — o
-  `Area` do arquivo é outra coisa e o `AREA_GIS` é a fazenda inteira) e
-  `CLASSE_08` (uso do solo em 2008).
-- **Gráfico**: CSV de índices de vegetação importado pelo painel — 24.628
-  medições, 116 fazendas, 4 classes, de 15/05/2007 a 23/08/2026, com NDVI e EVI.
-- **Conferido no navegador**: hover com fazenda, talhão, área e classe; clique
-  abrindo o painel com área total batendo com o `AREA_GIS` da fazenda
-  (410047: 1.819,04 ha em 217 talhões; 410816: 297,49 ha em 17), áreas por
-  classe somando o total, e o gráfico EVI/NDVI com uma linha por classe. A busca
-  por código também acha os talhões da visão MUT.
+| Arquivo | O que é | Para que serve na tela |
+| --- | --- | --- |
+| `MUT_2008_UMV_ISCC_2026` | 3.201 talhões, com a classe de uso de 2008 | cor por uso do solo, hover e contagem de talhões |
+| `ATLAS_UMV_ISCC_2026` | 116 fazendas (uma feição cada) | elegibilidade, nome, período, coordenadas, área e áreas por classe |
+| `10imag_Indices_Vegetacao...csv` | 24.628 medições de NDVI e EVI | o gráfico do rodapé da prancha |
 
-**Elegibilidade ainda não entrou**: o MUT_2008 não traz o campo. Enquanto não
-vier, a visão abre no modo "Uso do Solo", o botão "Elegibilidade" fica travado
-com o aviso, nada é pintado de vermelho e o painel diz "Elegibilidade não
-informada". Quando o GeoJSON novo chegar com o campo (`ELEG`, valores
-`ELEGÍVEL`/`INELEGÍVEL`), é só reenviar a camada: o resto já está configurado.
+As duas camadas se ligam pelo código da fazenda (`CODIGO` ↔ `CHAVE_AMB`): os 116
+códigos batem um a um.
 
-O cliente TESTE MUT continua como estava, com a fazenda 410123 e o campo `ELEG`,
-servindo de comparação do modo elegibilidade.
+**Como ficou no portal** (`/cliente/atvos-umv-iscc-2026`):
+
+- A visão abre em **Elegibilidade**: 28 fazendas verdes e 88 vermelhas, com o
+  contorno de cada fazenda do Atlas desenhado por cima do satélite.
+- O botão **Uso do Solo** troca o preenchimento para a classe de 2008 e mantém o
+  contorno da elegibilidade — as duas leituras ao mesmo tempo.
+- **Hover**: nome da fazenda, código, talhão, área, classe e o selo
+  elegível/inelegível.
+- **Painel da fazenda**: nome, código, município/estado, área total, talhões,
+  período (01/09/2025 a 31/08/2026), coordenadas de consulta, selo, hectares
+  elegíveis e inelegíveis, áreas por classe e o gráfico EVI/NDVI de 2007 a 2026.
+- **Busca por código** acha os talhões da visão MUT e o realce sobrevive à troca
+  de modo de cor.
+
+**Conferências feitas contra o arquivo** (tudo no navegador):
+
+- 410082 — FAZENDA BABILONIA, LD: RIO GRANDE: elegível, 513,99 ha, Lavoura de
+  Grãos 513,99 ha.
+- 410816 — FAZENDA BABILÔNIA II: inelegível, 297,55 ha em 17 talhões, Pastagem
+  Plantada 276,76 ha + Vegetação Nativa 20,79 ha (fecha com o `AREA` do Atlas).
+
+As áreas por classe saem das colunas do Atlas (`PLANT08`, `LAV08`, `VEG08`...),
+que somam exatamente a área da fazenda. Qual coluna é de qual classe fica na
+tela "Classes de uso do solo" — nada disso está escrito no código.
 
 ## 11. Próximos passos
 
-1. **GeoJSON com o campo de elegibilidade** (Carla) — reenviar a camada pelo
-   painel; nada mais precisa ser configurado.
-2. **Fase 2 — timelapse**: imagens anuais 2007→hoje no robô, barra de anos no
+1. **Fase 2 — timelapse**: imagens anuais 2007→hoje no robô, barra de anos no
    mapa e comparador antes/depois.
-3. Conferir na tela "Classes de uso do solo" se as cores das quatro classes que
-   aparecem nesse projeto (Pastagem Plantada, Lavoura de Grãos, Vegetação Nativa
-   e Formação Campestre) são as que a equipe usa nas pranchas.
+2. Conferir na tela "Classes de uso do solo" as cores e as colunas do Atlas das
+   classes usadas nos projetos.
+3. Repetir o cadastro para os próximos projetos: enviar as duas camadas e o CSV,
+   apontar os campos no card e pronto — sem código novo.

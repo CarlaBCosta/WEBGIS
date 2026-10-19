@@ -3,14 +3,20 @@ import L from 'leaflet';
 import type { MutConfig } from '@/lib/types/domain';
 import type { FeatureCollectionData } from './useLayerData';
 import {
+  COR_ELEGIVEL,
+  COR_INELEGIVEL,
+  COR_SEM_INFO,
   codigoDaFeicao,
   corDaFeicao,
+  ehElegivel,
   elegibilidadeDaFeicao,
   formatarHa,
   areaHaDaFeicao,
+  indexarFazendas,
   resumirFazenda,
-  rotuloDaClasse,
+  nomeDeExibicaoDaClasse,
   valorDoCampo,
+  type IndiceFazendas,
   type ResumoFazenda,
 } from '@/lib/mut';
 
@@ -35,6 +41,18 @@ function escapar(valor: unknown): string {
     .replace(/>/g, '&gt;');
 }
 
+// Cor do contorno de uma fazenda do Atlas, pela elegibilidade dela.
+function corDaFazenda(
+  props: Record<string, unknown>,
+  campo: string | null,
+  valoresElegivel: string[]
+): string {
+  const bruto = valorDoCampo(props, campo ?? '');
+  const valor = String(bruto ?? '').trim();
+  if (!valor) return COR_SEM_INFO;
+  return ehElegivel(valor, valoresElegivel) ? COR_ELEGIVEL : COR_INELEGIVEL;
+}
+
 // Visão MUT: desenha a camada de mudança do uso do solo com cor por
 // elegibilidade ou por classe de uso, mostra os dados no hover e resume a
 // fazenda inteira quando um talhão é clicado. A camada é desta visão: enquanto
@@ -51,6 +69,9 @@ export function useMutView({ map, mut, loadLayer, onSelecionarFeicao, camadasNoA
 
   const camadaRef = useRef<L.GeoJSON | null>(null);
   const dadosRef = useRef<FeatureCollectionData | null>(null);
+  // Contorno das fazendas (Atlas) e o índice código -> dados da fazenda.
+  const contornosRef = useRef<L.GeoJSON | null>(null);
+  const fazendasRef = useRef<IndiceFazendas | undefined>(undefined);
   // O modo fica também num ref para a função de estilo da camada continuar
   // estável: o Leaflet guarda a função no momento em que a camada é criada.
   const modoRef = useRef<ModoCorMut>('elegibilidade');
@@ -58,7 +79,7 @@ export function useMutView({ map, mut, loadLayer, onSelecionarFeicao, camadasNoA
   const estiloDaFeicao = useCallback(
     (feature?: GeoJSON.Feature): L.PathOptions => {
       if (!feature || !mut) return {};
-      const { contorno, preenchimento } = corDaFeicao(feature, mut, modoRef.current);
+      const { contorno, preenchimento } = corDaFeicao(feature, mut, modoRef.current, fazendasRef.current);
       return {
         color: contorno,
         weight: 2,
@@ -75,11 +96,19 @@ export function useMutView({ map, mut, loadLayer, onSelecionarFeicao, camadasNoA
     (feature: GeoJSON.Feature): string => {
       if (!mut) return '';
       const props = feature.properties as Record<string, unknown>;
-      const situacao = elegibilidadeDaFeicao(feature, mut);
+      const situacao = elegibilidadeDaFeicao(feature, mut, fazendasRef.current);
       const talhao = mut.campoTalhao ? valorDoCampo(props, mut.campoTalhao) : undefined;
-      const uso = mut.campoUso ? rotuloDaClasse(valorDoCampo(props, mut.campoUso)) : '';
+      const uso = mut.campoUso
+        ? nomeDeExibicaoDaClasse(mut.classes, valorDoCampo(props, mut.campoUso))
+        : '';
+      const codigo = codigoDaFeicao(feature, mut.campoCodigo);
+      const dadosFazenda = fazendasRef.current?.get(codigo);
+      const nome = mut.fazendas?.campoNome
+        ? String(valorDoCampo(dadosFazenda, mut.fazendas.campoNome) ?? '')
+        : '';
       const linhas = [
-        `<strong>Fazenda ${escapar(codigoDaFeicao(feature, mut.campoCodigo))}</strong>`,
+        `<strong>${nome ? escapar(nome) : `Fazenda ${escapar(codigo)}`}</strong>`,
+        nome ? `Fazenda ${escapar(codigo)}` : '',
         talhao !== undefined && talhao !== null && talhao !== '' ? `Talhão ${escapar(talhao)}` : '',
         `${formatarHa(areaHaDaFeicao(feature, mut.campoArea))} ha`,
         uso ? escapar(uso) : '',
@@ -101,7 +130,14 @@ export function useMutView({ map, mut, loadLayer, onSelecionarFeicao, camadasNoA
       const dados = dadosRef.current;
       if (!dados) return;
       const codigo = codigoDaFeicao(feature, mut.campoCodigo);
-      setResumo(resumirFazenda(dados.features as unknown as GeoJSON.Feature[], mut, codigo));
+      setResumo(
+        resumirFazenda(
+          dados.features as unknown as GeoJSON.Feature[],
+          mut,
+          codigo,
+          fazendasRef.current
+        )
+      );
     },
     [mut, onSelecionarFeicao]
   );
@@ -110,8 +146,10 @@ export function useMutView({ map, mut, loadLayer, onSelecionarFeicao, camadasNoA
 
   const desligar = useCallback(() => {
     if (map && camadaRef.current) map.removeLayer(camadaRef.current);
+    if (map && contornosRef.current) map.removeLayer(contornosRef.current);
     if (mut) camadasNoAr.delete(mut.layerKey);
     camadaRef.current = null;
+    contornosRef.current = null;
     setAtivo(false);
     setResumo(null);
   }, [map, mut, camadasNoAr]);
@@ -123,13 +161,42 @@ export function useMutView({ map, mut, loadLayer, onSelecionarFeicao, camadasNoA
     try {
       const dados = dadosRef.current ?? (await loadLayer(mut.layerKey));
       dadosRef.current = dados;
+
+      // Camada das fazendas (Atlas): elegibilidade, nome e período vêm dela.
+      if (mut.fazendas && !fazendasRef.current) {
+        try {
+          const atlas = await loadLayer(mut.fazendas.layerKey);
+          fazendasRef.current = indexarFazendas(
+            atlas.features as unknown as GeoJSON.Feature[],
+            mut.fazendas.campoCodigo
+          );
+          contornosRef.current = L.geoJSON(atlas as unknown as GeoJSON.FeatureCollection, {
+            interactive: false,
+            style: (feature) => ({
+              color: corDaFazenda(
+                (feature?.properties ?? {}) as Record<string, unknown>,
+                mut.fazendas!.campoElegibilidade,
+                mut.valoresElegivel
+              ),
+              weight: 1.5,
+              opacity: 0.9,
+              fill: false,
+            }),
+          });
+        } catch {
+          // Sem o Atlas a visão continua: só perde o cabeçalho e a elegibilidade.
+          fazendasRef.current = undefined;
+        }
+      }
       if (!dados.features?.length) {
         setErro('A camada MUT deste cliente está vazia.');
         return;
       }
 
       const feicoes = dados.features as unknown as GeoJSON.Feature[];
-      const temEleg = feicoes.some((f) => elegibilidadeDaFeicao(f, mut) !== 'desconhecida');
+      const temEleg = feicoes.some(
+        (f) => elegibilidadeDaFeicao(f, mut, fazendasRef.current) !== 'desconhecida'
+      );
       setTemElegibilidade(temEleg);
       if (!temEleg && mut.campoUso) {
         modoRef.current = 'uso';
@@ -171,6 +238,7 @@ export function useMutView({ map, mut, loadLayer, onSelecionarFeicao, camadasNoA
         },
       });
 
+      contornosRef.current?.addTo(map);
       camada.addTo(map);
       camadaRef.current = camada;
       camadasNoAr.set(mut.layerKey, camada);
@@ -189,10 +257,20 @@ export function useMutView({ map, mut, loadLayer, onSelecionarFeicao, camadasNoA
     else ligar();
   }, [ligar, desligar]);
 
-  // Troca de cor sem recarregar nem redesenhar a camada.
+  // Troca de cor sem recarregar nem redesenhar a camada. A transparência de
+  // cada talhão é preservada: a busca por código apaga os que não batem, e
+  // trocar o modo de cor não pode acender todos de volta.
   useEffect(() => {
     modoRef.current = modo;
-    camadaRef.current?.setStyle((feature) => estiloDaFeicao(feature as GeoJSON.Feature));
+    camadaRef.current?.eachLayer((camada) => {
+      const alvo = camada as L.Path & { feature?: GeoJSON.Feature };
+      if (!alvo.feature || typeof alvo.setStyle !== 'function') return;
+      alvo.setStyle({
+        ...estiloDaFeicao(alvo.feature),
+        opacity: alvo.options.opacity,
+        fillOpacity: alvo.options.fillOpacity,
+      });
+    });
   }, [modo, estiloDaFeicao]);
 
   // Tira a camada do mapa ao sair da página.

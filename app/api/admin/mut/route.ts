@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { lerCamposDaCamada } from '@/lib/timelapseServidor';
-import { CAMPO_ELEGIBILIDADE_PADRAO, VALORES_ELEGIVEL_PADRAO, detectarCamposMut } from '@/lib/mut';
+import {
+  CAMPO_ELEGIBILIDADE_PADRAO,
+  VALORES_ELEGIVEL_PADRAO,
+  detectarCamposFazenda,
+  detectarCamposMut,
+} from '@/lib/mut';
 
 // Configuração da visão MUT de um cliente (tabela mut_config, migration 0009).
 // Rota protegida pelo proxy.ts como as demais do painel.
@@ -110,6 +115,13 @@ export async function PUT(request: NextRequest) {
         safra: texto(body.safra),
         ano_inicial: Number(body.anoInicial) || 2007,
         ano_mut: Number(body.anoMut) || 2008,
+        layer_fazendas: campoOpcional(body.layerFazendas),
+        campo_codigo_fazenda: campoOpcional(body.campoCodigoFazenda),
+        campo_nome: campoOpcional(body.campoNome),
+        campo_area_fazenda: campoOpcional(body.campoAreaFazenda),
+        campo_periodo: campoOpcional(body.campoPeriodo),
+        campo_latlong: campoOpcional(body.campoLatLong),
+        campo_elegibilidade_fazenda: campoOpcional(body.campoElegibilidadeFazenda),
         ativo: body.ativo !== false,
         updated_at: new Date().toISOString(),
       },
@@ -138,7 +150,7 @@ export async function DELETE(request: NextRequest) {
 // Usado pelo card quando a camada escolhida muda: devolve os atributos do
 // arquivo e o palpite de qual campo é o quê.
 export async function POST(request: NextRequest) {
-  const { clientId, layerKey } = await request.json();
+  const { clientId, layerKey, tipo } = await request.json();
   if (!clientId || !layerKey) {
     return NextResponse.json({ error: 'clientId e layerKey obrigatórios.' }, { status: 400 });
   }
@@ -151,5 +163,6 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   const campos = camada?.storage_path ? await lerCamposDaCamada(camada.storage_path, 65536) : [];
-  return NextResponse.json({ campos, detectado: detectarCamposMut(campos) });
+  const detectado = tipo === 'fazendas' ? detectarCamposFazenda(campos) : detectarCamposMut(campos);
+  return NextResponse.json({ campos, detectado });
 }

@@ -7,7 +7,7 @@ import { TimelapseCard } from '@/components/admin/TimelapseCard';
 import { MutCard } from '@/components/admin/MutCard';
 import { carregarTiposProjeto } from '@/lib/tiposProjeto';
 import { sugerirFazendas } from '@/lib/timelapseServidor';
-import { sugerirCamadaMut } from '@/lib/mutServidor';
+import { sugerirCamadaMut, sugerirCamadaFazendas } from '@/lib/mutServidor';
 import type { MutConfigRow } from '@/lib/types/database';
 
 export default async function EditClientePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -34,9 +34,10 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
       .select('*', { count: 'exact', head: true })
       .eq('client_id', client.id),
   ]);
-  const [sugestao, sugestaoMut] = await Promise.all([
+  const [sugestao, sugestaoMut, sugestaoAtlas] = await Promise.all([
     sugerirFazendas(layers ?? [], client.farm_code_fields ?? []),
     sugerirCamadaMut(layers ?? [], mutConfig?.layer_key ?? null),
+    sugerirCamadaFazendas(layers ?? [], mutConfig?.layer_fazendas ?? null),
   ]);
 
   return (
@@ -62,6 +63,7 @@ export default async function EditClientePage({ params }: { params: Promise<{ sl
         layers={(layers ?? []).map(({ layer_key, label }) => ({ layer_key, label }))}
         config={mutConfig ?? null}
         sugestao={sugestaoMut}
+        sugestaoAtlas={sugestaoAtlas}
         linhasIndices={linhasIndices ?? 0}
       />
       <ClientForm

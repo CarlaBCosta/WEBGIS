@@ -1,6 +1,6 @@
 import { supabaseBrowser } from '@/lib/supabase/client';
 import type { ClientRow, LayerGroupWithLayersRow, MutClasseRow, MutConfigRow } from '@/lib/types/database';
-import type { ClientConfig, MutConfig } from '@/lib/types/domain';
+import type { ClientConfig, MutConfig, MutFazendasConfig } from '@/lib/types/domain';
 import { CAMPO_ELEGIBILIDADE_PADRAO, VALORES_ELEGIVEL_PADRAO } from '@/lib/mut';
 
 // Ports loadClientConfig() from shared/app.js. Runs server-side now (called
@@ -58,6 +58,19 @@ export async function loadClientConfig(slug: string): Promise<ClientConfig | nul
 // Visão MUT do cliente + catálogo de classes (modelo global sobrescrito pelas
 // exceções do cliente). Tabelas da migration 0009: se ela ainda não tiver sido
 // aplicada, a consulta falha e o portal segue sem a visão MUT.
+function montarFazendas(cfg: MutConfigRow): MutFazendasConfig | null {
+  if (!cfg.layer_fazendas) return null;
+  return {
+    layerKey: cfg.layer_fazendas,
+    campoCodigo: cfg.campo_codigo_fazenda || cfg.campo_codigo,
+    campoNome: cfg.campo_nome,
+    campoArea: cfg.campo_area_fazenda,
+    campoPeriodo: cfg.campo_periodo,
+    campoLatLong: cfg.campo_latlong,
+    campoElegibilidade: cfg.campo_elegibilidade_fazenda,
+  };
+}
+
 async function carregarMut(clientId: string): Promise<MutConfig | null> {
   const { data: cfg } = await supabaseBrowser
     .from('mut_config')
@@ -94,8 +107,9 @@ async function carregarMut(clientId: string): Promise<MutConfig | null> {
     safra: cfg.safra,
     anoInicial: cfg.ano_inicial,
     anoMut: cfg.ano_mut ?? 2008,
+    fazendas: montarFazendas(cfg),
     classes: [...porNome.values()]
       .sort((a, b) => a.sort_order - b.sort_order)
-      .map((c) => ({ nome: c.nome, cor: c.cor })),
+      .map((c) => ({ nome: c.nome, cor: c.cor, campoAtlas: c.campo_atlas })),
   };
 }

@@ -119,6 +119,15 @@ export interface MutConfigRow {
   ano_inicial: number;
   // Ano de referência do MUT (2008 nos projetos ISCC).
   ano_mut: number;
+  // Camada das fazendas (Atlas) e seus campos: elegibilidade, nome, período e
+  // coordenadas de consulta vêm de lá (migration 0011).
+  layer_fazendas: string | null;
+  campo_codigo_fazenda: string | null;
+  campo_nome: string | null;
+  campo_area_fazenda: string | null;
+  campo_periodo: string | null;
+  campo_latlong: string | null;
+  campo_elegibilidade_fazenda: string | null;
   ativo: boolean;
   updated_at: string;
 }
@@ -143,4 +152,6 @@ export interface MutClasseRow {
   nome: string;
   cor: string;
   sort_order: number;
+  // Coluna do Atlas com a área desta classe (migration 0012).
+  campo_atlas: string | null;
 }

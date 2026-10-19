@@ -29,8 +29,11 @@ export function MutResumo({
 
   return (
     <div className="mut-resumo">
-      {mut.nomeFazenda && <div className="mut-resumo-fazenda">{mut.nomeFazenda}</div>}
-      <div className="mut-resumo-codigo">Fazenda {resumo.codigo}</div>
+      <div className="mut-resumo-fazenda">{resumo.nome || mut.nomeFazenda || `Fazenda ${resumo.codigo}`}</div>
+      <div className="mut-resumo-codigo">
+        Código {resumo.codigo}
+        {resumo.municipio ? ` · ${resumo.municipio}` : ''}
+      </div>
 
       <dl className="mut-resumo-dados">
         <div>
@@ -41,10 +44,10 @@ export function MutResumo({
           <dt>Talhões</dt>
           <dd>{resumo.talhoes}</dd>
         </div>
-        {mut.safra && (
+        {(resumo.periodo || mut.safra) && (
           <div>
-            <dt>Safra</dt>
-            <dd>{mut.safra}</dd>
+            <dt>{resumo.periodo ? 'Período' : 'Safra'}</dt>
+            <dd>{resumo.periodo || mut.safra}</dd>
           </div>
         )}
         {resumo.centro && (
